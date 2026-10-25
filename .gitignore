@@ -1,0 +1,14 @@
+# Personal game data written by the mod next to its Scripts folder
+spellbook.txt
+
+# Runtime artifacts from the game folder
+*.log
+*.dmp
+
+# Editors and OS
+.vs/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

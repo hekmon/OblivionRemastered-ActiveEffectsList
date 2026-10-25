@@ -129,7 +129,8 @@ local mt = { __index = function(t, k)
       if gameTime >= 116 then m = m - 277 end
       return m
     end
-    if gameTime >= 108 then m = m - 50 end
+    -- COSTUP=1: the spell now costs 62 instead of the recorded 50 (skill or gear changed).
+    if gameTime >= 108 then m = m - (os.getenv("COSTUP") == "1" and 62 or 50) end
     if STUCK and gameTime >= 125 then m = m - 40 end
     if STUCK and gameTime >= 130 then m = m - 37 end
     if os.getenv("VRECAST") == "1" and gameTime >= 130 then m = m - 50 end
@@ -171,7 +172,9 @@ local mm = obj("VMagicMenuViewModel", "MM", {
     { Name = text("Masse enchantée"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 21, Property = 281 },
     { Name = text("Épée liée"), Icon = T("T_bound_weapon_conjuration"), Type = 4, InventoryIndex = 22 },
   }),
-  CurrentSpellEquiped = { Name = text("{Item}"), Type = 0 }, -- what the game showed after selecting a spell
+  -- what the game showed after selecting a spell; USERTEXT=1: a custom spell's raw name key
+  CurrentSpellEquiped = os.getenv("USERTEXT") == "1" and { Name = text("UserInputText_104_471_22"), Icon = T("T_fortify_restoration"), Type = 0 }
+    or { Name = text("{Item}"), Type = 0 },
   CurrentPageInventory = arr({}) })
 local function eff(name, extra, mag, dur, icon, range) return { EffectName = text(name), AdditionalEffectName = text(extra), Magnitude = mag, Duration = dur, Image = T(icon), Range = range } end
 local SPELL_EFFECTS = {

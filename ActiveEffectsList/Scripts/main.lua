@@ -1058,7 +1058,9 @@ local function EquippedSpellName(vm, hudIcon)
             local okC, cur = pcall(function() return mm.CurrentSpellEquiped end)
             if okC and cur and NameOf(cur.Icon) == hudIcon then
                 local name = TextToString(cur.Name)
-                if name ~= "" then return name end
+                -- Custom spells come back as a raw text key ("UserInputText_104_471_22"), and a
+                -- stale value as "{Item}": not names.
+                if name ~= "" and not name:find("^UserInputText") and not name:find("{", 1, true) then return name end
             end
             return nil
         end
@@ -1367,8 +1369,7 @@ local function AttributeCasts(tracked, vm)
             icons[#icons + 1] = e.iconName
         end
     end
-    local logIt = not first.loggedCast
-    first.loggedCast = true
+    local logIt = not first.loggedCast -- set once a decision is reached
     local dropAmount = cast.drop and cast.drop.amount or nil
 
     -- 1. The spell book; ties broken by the equipped icon, the magicka spent, then durations.
@@ -1380,8 +1381,29 @@ local function AttributeCasts(tracked, vm)
     end
     local estimates = true
     for _, e in ipairs(group) do if not e.duration then estimates = false end end
+    -- A spell must not contradict the measured durations (an "Épée liée" of 15 s is not a bound
+    -- weapon running for 50 s). Loose: the first estimates are rough.
+    local function DurationsFit(n)
+        for _, e in ipairs(group) do
+            if e.duration then
+                local found = false
+                for _, it in ipairs(SelfTimed(spellbook.spells[n])) do
+                    if it.se.icon == e.iconName and math.abs(it.se.duration - e.duration) <= math.max(5, it.se.duration * 0.3) then
+                        found = true
+                    end
+                end
+                if not found then return false end
+            end
+        end
+        return true
+    end
     -- Returns the remaining candidates, or nil when the duration estimate is needed but not ready.
     local function Choose(list)
+        if estimates then
+            local fit = {}
+            for _, n in ipairs(list) do if DurationsFit(n) then fit[#fit + 1] = n end end
+            list = fit
+        end
         if #list > 1 then
             list = Narrow(list, function(n) return spellbook.spells[n].icon == hudIcon end)
         end
@@ -1432,49 +1454,48 @@ local function AttributeCasts(tracked, vm)
         end
         return list
     end
-    -- A single candidate must not contradict the measured durations (an "Épée liée" of 15 s is not
-    -- a bound weapon running for 50 s). Loose: the first estimates are rough.
-    local function DurationsFit(n)
-        for _, e in ipairs(group) do
-            if e.duration then
-                local found = false
-                for _, it in ipairs(SelfTimed(spellbook.spells[n])) do
-                    if it.se.icon == e.iconName and math.abs(it.se.duration - e.duration) <= math.max(5, it.se.duration * 0.3) then
-                        found = true
-                    end
-                end
-                if not found then return false end
-            end
-        end
-        return true
-    end
     local exact, containing = SpellsMatching(icons)
     local isExact = {}
     for _, n in ipairs(exact) do isExact[n] = true end
     local all = {}
     for _, n in ipairs(exact) do all[#all + 1] = n end
     for _, n in ipairs(containing) do all[#all + 1] = n end
-    -- Spells whose recorded cost contradicts the magicka spent are out.
-    local list = {}
-    for _, n in ipairs(all) do
-        if CostMatches(spellbook.spells[n], dropAmount) ~= false then list[#list + 1] = n end
-    end
-    -- Effects can only be missing when the HUD list is full: otherwise exact matches come first.
-    if not hudFull then
-        local exactOnly = {}
-        for _, n in ipairs(list) do if isExact[n] then exactOnly[#exactOnly + 1] = n end end
-        if #exactOnly > 0 then list = exactOnly end
-    end
-    local candidates = Choose(list)
-    if candidates and #candidates > 1 then
-        candidates = Narrow(candidates, function(n) return isExact[n] end)
-    end
-    if candidates and #candidates == 1 and not DurationsFit(candidates[1]) then
-        if not first.loggedMismatch then
-            first.loggedMismatch = true
-            Debug("cast: '%s' rejected, its durations do not match the effects' (%.0fs)", candidates[1], group[1].duration or -1)
+    -- Several spells have these icons, or the only one's recorded cost contradicts the magicka
+    -- spent: wait for the duration estimate (about a second) before deciding.
+    if not estimates and (#all > 1 or (#all == 1 and CostMatches(spellbook.spells[all[1]], dropAmount) == false)) then
+        if not first.loggedWait then
+            first.loggedWait = true
+            Debug("cast: %d spell(s) with these icons {%s}, waiting for the duration estimate", #all, table.concat(all, ", "))
         end
-        candidates = {}
+        return
+    end
+    local function Select(base)
+        local list = base
+        -- Effects can only be missing when the HUD list is full: otherwise exact matches come first.
+        if not hudFull then
+            local exactOnly = {}
+            for _, n in ipairs(list) do if isExact[n] then exactOnly[#exactOnly + 1] = n end end
+            if #exactOnly > 0 then list = exactOnly end
+        end
+        local out = Choose(list)
+        if out and #out > 1 then out = Narrow(out, function(n) return isExact[n] end) end
+        return out
+    end
+    -- Spells whose recorded cost contradicts the magicka spent are out, unless no other spell fits:
+    -- recorded costs go out of date as skills and gear change.
+    local affordable = {}
+    for _, n in ipairs(all) do
+        if CostMatches(spellbook.spells[n], dropAmount) ~= false then affordable[#affordable + 1] = n end
+    end
+    local candidates = Select(affordable)
+    if candidates and #candidates == 0 and #affordable < #all then
+        candidates = Select(all)
+        if #candidates > 0 and logIt then
+            Debug("cast: no spell matches the magicka spent (%s), recorded costs may be outdated", tostring(dropAmount))
+        end
+    end
+    if candidates and #candidates == 0 and #all > 0 and logIt then
+        Debug("cast: {%s} rejected, their durations do not match the effects' (%.0fs)", table.concat(all, ", "), group[1].duration or -1)
     end
     local partial = candidates ~= nil and #candidates == 1 and not isExact[candidates[1]]
     if candidates == nil then
@@ -1484,6 +1505,7 @@ local function AttributeCasts(tracked, vm)
         end
         return
     end
+    first.loggedCast = true
     local summary = string.format("%.0fs -> {%s}", group[1].duration or -1, table.concat(candidates, ", "))
     if estimates and first.lastSummary ~= summary then
         first.lastSummary = summary
@@ -1500,8 +1522,12 @@ local function AttributeCasts(tracked, vm)
         -- Costs change as skills go up: learn the magicka actually spent, when it is plausible
         -- (within 25 %) and the spell was identified by its effects, not by its cost.
         local spell = spellbook.spells[candidates[1]]
-        local byEffects = #exact == 1 or (#exact == 0 and #containing == 1)
-        if spell and dropAmount and byEffects and now - cast.drop.at < 1.5 then
+        local fitting = 0
+        if estimates then
+            for _, n in ipairs(all) do if DurationsFit(n) then fitting = fitting + 1 end end
+        end
+        local byEffects = #exact == 1 or (#exact == 0 and #containing == 1) or fitting == 1
+        if spell and dropAmount and byEffects and now - cast.drop.at < 3 then
             local spent = Round(dropAmount)
             if spell.cost == nil or (spent ~= spell.cost and math.abs(spent - spell.cost) <= spell.cost * 0.25) then
                 Debug("spell book: cost of '%s' %s -> %d (magicka spent)", candidates[1], tostring(spell.cost), spent)

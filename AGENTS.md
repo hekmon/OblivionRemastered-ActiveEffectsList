@@ -55,6 +55,7 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        DISPEL=1 FULL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok   # dispel with rebuilt effects
        VRECAST=1 FULL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # visible recast keeps others
        BOW=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok      # effects of one cast 0.3 s apart, same-icon spells
+       COSTUP=1 USERTEXT=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # outdated cost, raw custom name
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -111,7 +112,8 @@ Do not install or reinstall something risky while the user is playing without te
   cast. The spell is the one in the book whose self-range timed effects have exactly the new
   effects' icons, with ties broken by the HUD's live `SpellIcon`, then by
   `VMagicMenuViewModel.CurrentSpellEquiped`. That value is stale until the magic menu is reopened,
-  so it is only trusted when its icon equals `SpellIcon`. Matched effects get the exact label and
+  so it is only trusted when its icon equals `SpellIcon`. For custom spells its name is a raw text
+  key ("UserInputText_104_471_22"), and a stale one reads "{Item}": both are ignored. Matched effects get the exact label and
   duration from the book. Potions, scrolls and shrines (no magicka drop) keep generic names.
 - **Loading screens:** after entering a cave, the cached `VHUDMainViewModel` stayed "valid" but
   reported 0 effects forever. The game had evidently made a new one at load. The view model is
@@ -148,8 +150,13 @@ Do not install or reinstall something risky while the user is playing without te
   fortify, 50 s, cost 284; "Masse enchantée": same, cost 281) are settled by the closest recorded
   cost once the drop is complete (both are within the cost tolerance). The first duration
   estimates are rough (44 s for 50 s), so a duration filter that leaves no spell keeps waiting
-  instead of rejecting all. A single candidate whose durations contradict the estimate (more than
-  30 % / 5 s off) is rejected.
+  instead of rejecting all. Spells whose durations contradict the estimate (more than 30 % / 5 s
+  off) are ruled out. When several spells have the new effects' icons, nothing is decided before
+  the duration estimate (about a second).
+- **Recorded costs go out of date** (seen: 211 -> 239, 280 -> 277). A spell whose cost contradicts
+  the magicka spent is only ruled out if another spell fits; otherwise the effects decide and the
+  cost is updated. Before this, an outdated cost ruled out the right spell, and a same-icon spell
+  of another duration, or the equipped spell's raw name, was shown instead.
 - **Effects of one cast can appear a few updates apart** (in game, the fortify came 0.3 s before
   the bound bow). The 8 s give-up timer counts from the first effect of the group, so the group
   gives up together. Before this, the fortify gave up alone and the lone bow was matched to

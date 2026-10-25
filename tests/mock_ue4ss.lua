@@ -100,6 +100,11 @@ if BOW then
   effects[#effects + 1] = { icon = "T_fortify_restoration", dur = 50, start = 115.0 }
   effects[#effects + 1] = { icon = "T_bound_weapon_conjuration", dur = 50, start = 115.3 }
 end
+-- CHAM=1: "Caméléon" (60 s, cost 239) cast at 115 right before the HUD stops updating for 3 s
+-- while the game runs (as after a menu): the duration estimate creeps up (17, 20, 22 s...).
+-- "Pas voilés" has the same icon, 30 s, cost 17.
+CHAM = os.getenv("CHAM") == "1"
+if CHAM then effects[#effects + 1] = { icon = "T_chameleon_illusion", dur = 60, start = 115.0 } end
 if FULL then
   for _ = 1, 5 do effects[#effects + 1] = { icon = "T_bound_armor_conjuration", dur = 120, start = 112 } end
   effects[#effects + 1] = { icon = "T_shield_alteration", dur = 118, start = 120 }
@@ -108,6 +113,8 @@ local gameTime = 100.0
 local paused = false
 local function hudArrays()
   local ic, tl = {}, {}
+  local gameTime = gameTime
+  if CHAM and gameTime >= 115.5 and gameTime < 118.5 then gameTime = 115.5 end
   for _, e in ipairs(effects) do
     -- DISPEL=1: everything active is removed at 140 (Dissipation)
     local dispelled = (os.getenv("DISPEL") == "1" and gameTime >= 140 and e.start < 140) or (e.stop and gameTime >= e.stop)
@@ -129,17 +136,19 @@ local mt = { __index = function(t, k)
       if gameTime >= 116 then m = m - 277 end
       return m
     end
-    -- COSTUP=1: the spell now costs 62 instead of the recorded 50 (skill or gear changed).
-    if gameTime >= 108 then m = m - (os.getenv("COSTUP") == "1" and 62 or 50) end
+    -- COSTUP=1: the spell now costs 42 instead of the recorded 50 (skill went up).
+    if gameTime >= 108 then m = m - (os.getenv("COSTUP") == "1" and 42 or 50) end
     if STUCK and gameTime >= 125 then m = m - 40 end
     if STUCK and gameTime >= 130 then m = m - 37 end
     if os.getenv("VRECAST") == "1" and gameTime >= 130 then m = m - 50 end
     if STUCK and os.getenv("RECAST") == "1" and gameTime >= 135 then m = m - 40 end -- same spell again
     if BOW and gameTime >= 115.3 then m = m - 284 end
+    if CHAM and gameTime >= 115 then m = m - 239 end
     if FULL and gameTime >= 112 then m = m - 121 end
     if FULL and gameTime >= 120 then m = m - 85 end
     return m
   elseif k == "SpellIcon" then
+    if CHAM and gameTime >= 114 then return T("T_chameleon_illusion") end
     if PARTIAL and gameTime >= 115 then return T("T_fortify_restoration") end
     if PARTIAL and gameTime >= 111 then return T("T_bound_armor_conjuration") end
     if FULL and gameTime >= 119 then return T("T_shield_alteration") end
@@ -171,6 +180,8 @@ local mm = obj("VMagicMenuViewModel", "MM", {
     { Name = text("Arc enchanté"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 20, Property = 284 },
     { Name = text("Masse enchantée"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 21, Property = 281 },
     { Name = text("Épée liée"), Icon = T("T_bound_weapon_conjuration"), Type = 4, InventoryIndex = 22 },
+    { Name = text("Caméléon"), Icon = T("T_chameleon_illusion"), Type = 4, InventoryIndex = 23, Property = 239 },
+    { Name = text("Pas voilés"), Icon = T("T_chameleon_illusion"), Type = 4, InventoryIndex = 24, Property = 17 },
   }),
   -- what the game showed after selecting a spell; USERTEXT=1: a custom spell's raw name key
   CurrentSpellEquiped = os.getenv("USERTEXT") == "1" and { Name = text("UserInputText_104_471_22"), Icon = T("T_fortify_restoration"), Type = 0 }
@@ -195,12 +206,15 @@ local SPELL_EFFECTS = {
   [3090] = { eff("Arc lié", "", 0, 50, "T_bound_weapon_conjuration", 0), eff("Renfort : {0}", "Agilité", 100, 50, "T_fortify_restoration", 0) },
   [3091] = { eff("Masse liée", "", 0, 50, "T_bound_weapon_conjuration", 0), eff("Renfort : {0}", "Force", 100, 50, "T_fortify_restoration", 0) },
   [3092] = { eff("Épée liée", "", 0, 15, "T_bound_weapon_conjuration", 0) },
+  [3093] = { eff("Caméléon", "", 100, 60, "T_chameleon_illusion", 0) },
+  [3094] = { eff("Caméléon", "", 15, 30, "T_chameleon_illusion", 0) },
 }
 local added = obj("VAddedEffectsListViewModel", "AddedVM")
 local SPELL_NAMES = { [3007] = "Nerver Give Up", [3049] = "Puissance de l'archer", [3050] = "Puissance du mage",
   [3060] = "Daedric Armor", [3061] = "Bouclier lié", [3070] = "Champ de Force", [3071] = "Égide",
   [3080] = "Magic Well", [3081] = "Renfort de Volonté supérieur",
-  [3090] = "Arc enchanté", [3091] = "Masse enchantée", [3092] = "Épée liée" }
+  [3090] = "Arc enchanté", [3091] = "Masse enchantée", [3092] = "Épée liée",
+  [3093] = "Caméléon", [3094] = "Pas voilés" }
 -- As in the game: the panel instance is named after the menu's variable ("magic_details"), and the
 -- title is a WBP_AltarTextBlock user widget wrapping a VAltarTextBlock named text_block.
 local title = obj("VAltarTextBlock", "text_block", nil,
@@ -298,6 +312,7 @@ hoverSpell(3049); step(2, true)   -- the spell that will be cast
 hoverSpell(3050); step(2, true)   -- decoy with the same icons
 if FULL or PARTIAL or STUCK then for _, id in ipairs({ 3060, 3061, 3070, 3071, 3080, 3081 }) do hoverSpell(id); step(1, true) end end
 if BOW then for _, id in ipairs({ 3090, 3091, 3092 }) do hoverSpell(id); step(1, true) end end
+if CHAM then for _, id in ipairs({ 3093, 3094 }) do hoverSpell(id); step(1, true) end end
 HOVERED = nil
 step(9)          -- includes the fortify cast at gameTime 108
 step(10, true)   -- paused (menu open)

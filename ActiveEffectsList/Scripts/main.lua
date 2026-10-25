@@ -694,6 +694,13 @@ local function UpdateTracker(hud, running)
             local d = elapsed / used
             if d > 5 then d = Round(d) end -- spell durations are whole seconds
             e.duration = d
+            -- The estimate is "settled" once it has held within 5 % for a second of game time.
+            -- Right after a menu it can creep up for a while (17, 20, 22 s... for a 60 s spell).
+            if e.durRef and math.abs(d - e.durRef) <= math.max(1, e.durRef * 0.05) then
+                if clock - e.durRefAt >= 1.0 then e.durSettled = true end
+            else
+                e.durRef, e.durRefAt, e.durSettled = d, clock, false
+            end
         end
         new[#new + 1] = e
     end
@@ -1379,10 +1386,13 @@ local function AttributeCasts(tracked, vm)
         if #out > 0 then return out end
         return list
     end
-    local estimates = true
-    for _, e in ipairs(group) do if not e.duration then estimates = false end end
+    local estimates, settled = true, true
+    for _, e in ipairs(group) do
+        if not e.duration then estimates = false end
+        if not (e.knownDuration or e.durSettled) then settled = false end
+    end
     -- A spell must not contradict the measured durations (an "Épée liée" of 15 s is not a bound
-    -- weapon running for 50 s). Loose: the first estimates are rough.
+    -- weapon running for 50 s). Only applied to settled estimates, and loosely.
     local function DurationsFit(n)
         for _, e in ipairs(group) do
             if e.duration then
@@ -1399,7 +1409,7 @@ local function AttributeCasts(tracked, vm)
     end
     -- Returns the remaining candidates, or nil when the duration estimate is needed but not ready.
     local function Choose(list)
-        if estimates then
+        if settled then
             local fit = {}
             for _, n in ipairs(list) do if DurationsFit(n) then fit[#fit + 1] = n end end
             list = fit
@@ -1460,15 +1470,6 @@ local function AttributeCasts(tracked, vm)
     local all = {}
     for _, n in ipairs(exact) do all[#all + 1] = n end
     for _, n in ipairs(containing) do all[#all + 1] = n end
-    -- Several spells have these icons, or the only one's recorded cost contradicts the magicka
-    -- spent: wait for the duration estimate (about a second) before deciding.
-    if not estimates and (#all > 1 or (#all == 1 and CostMatches(spellbook.spells[all[1]], dropAmount) == false)) then
-        if not first.loggedWait then
-            first.loggedWait = true
-            Debug("cast: %d spell(s) with these icons {%s}, waiting for the duration estimate", #all, table.concat(all, ", "))
-        end
-        return
-    end
     local function Select(base)
         local list = base
         -- Effects can only be missing when the HUD list is full: otherwise exact matches come first.
@@ -1487,23 +1488,34 @@ local function AttributeCasts(tracked, vm)
     for _, n in ipairs(all) do
         if CostMatches(spellbook.spells[n], dropAmount) ~= false then affordable[#affordable + 1] = n end
     end
+    -- Evidence: the effects' icons, then the magicka spent. Until the durations are settled, a
+    -- spell is only taken if its recorded cost matches; otherwise wait (an effect gets 8 s).
     local candidates = Select(affordable)
+    local outdated = false
+    if candidates and #candidates == 1 and not settled
+        and CostMatches(spellbook.spells[candidates[1]], dropAmount) ~= true then
+        candidates = nil
+    end
+    if candidates and #candidates ~= 1 and not settled then candidates = nil end
     if candidates and #candidates == 0 and #affordable < #all then
+        -- Settled durations rule out every spell whose cost fits: recorded costs go out of date
+        -- as skills and gear change, so the effects decide.
         candidates = Select(all)
-        if #candidates > 0 and logIt then
-            Debug("cast: no spell matches the magicka spent (%s), recorded costs may be outdated", tostring(dropAmount))
-        end
+        outdated = #candidates > 0
     end
-    if candidates and #candidates == 0 and #all > 0 and logIt then
-        Debug("cast: {%s} rejected, their durations do not match the effects' (%.0fs)", table.concat(all, ", "), group[1].duration or -1)
-    end
-    local partial = candidates ~= nil and #candidates == 1 and not isExact[candidates[1]]
     if candidates == nil then
         if not first.loggedWait then
             first.loggedWait = true
-            Debug("cast: several spells match, waiting for the duration estimate")
+            Debug("cast: {%s} match these icons, waiting for the duration estimate to settle", table.concat(all, ", "))
         end
         return
+    end
+    local partial = #candidates == 1 and not isExact[candidates[1]]
+    if logIt and outdated then
+        Debug("cast: no spell matches the magicka spent (%s), recorded costs may be outdated", tostring(dropAmount))
+    end
+    if logIt and #candidates == 0 and #all > 0 then
+        Debug("cast: {%s} rejected, their durations do not match the effects' (%.0fs)", table.concat(all, ", "), group[1].duration or -1)
     end
     first.loggedCast = true
     local summary = string.format("%.0fs -> {%s}", group[1].duration or -1, table.concat(candidates, ", "))
@@ -1523,7 +1535,7 @@ local function AttributeCasts(tracked, vm)
         -- (within 25 %) and the spell was identified by its effects, not by its cost.
         local spell = spellbook.spells[candidates[1]]
         local fitting = 0
-        if estimates then
+        if settled then
             for _, n in ipairs(all) do if DurationsFit(n) then fitting = fitting + 1 end end
         end
         local byEffects = #exact == 1 or (#exact == 0 and #containing == 1) or fitting == 1

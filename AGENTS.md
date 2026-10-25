@@ -56,6 +56,7 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        VRECAST=1 FULL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # visible recast keeps others
        BOW=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok      # effects of one cast 0.3 s apart, same-icon spells
        COSTUP=1 USERTEXT=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # outdated cost, raw custom name
+       CHAM=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok     # duration estimate creeping after a menu
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -150,12 +151,17 @@ Do not install or reinstall something risky while the user is playing without te
   fortify, 50 s, cost 284; "Masse enchantée": same, cost 281) are settled by the closest recorded
   cost once the drop is complete (both are within the cost tolerance). The first duration
   estimates are rough (44 s for 50 s), so a duration filter that leaves no spell keeps waiting
-  instead of rejecting all. Spells whose durations contradict the estimate (more than 30 % / 5 s
-  off) are ruled out. When several spells have the new effects' icons, nothing is decided before
-  the duration estimate (about a second).
+  instead of rejecting all.
+- **Evidence order: icons, then magicka spent, then durations.** Right after a menu the duration
+  estimate can creep up for seconds (17, 20, 22 s... for a 60 s "Caméléon"): the clock was not
+  credited while the HUD did not update. Durations only rule out spells (more than 30 % / 5 s
+  off) once the estimate is *settled* (held within 5 % for a second of game time). Until then a
+  spell is only taken when its recorded cost matches the magicka spent. Before this, the early
+  17 s estimate ruled out "Caméléon" (cost 239, the exact drop) and "Pas voilés" (30 s, cost 17)
+  was shown.
 - **Recorded costs go out of date** (seen: 211 -> 239, 280 -> 277). A spell whose cost contradicts
-  the magicka spent is only ruled out if another spell fits; otherwise the effects decide and the
-  cost is updated. Before this, an outdated cost ruled out the right spell, and a same-icon spell
+  the magicka spent is only ruled out if another spell fits; otherwise settled durations decide
+  and the cost is updated. Before this, an outdated cost ruled out the right spell, and a same-icon spell
   of another duration, or the equipped spell's raw name, was shown instead.
 - **Effects of one cast can appear a few updates apart** (in game, the fortify came 0.3 s before
   the bound bow). The 8 s give-up timer counts from the first effect of the group, so the group

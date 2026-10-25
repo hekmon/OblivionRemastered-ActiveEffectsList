@@ -1282,12 +1282,25 @@ local function AttributeCasts(tracked, vm)
 
     -- New effects not attributed yet (an effect gets 8 seconds to be matched with a cast; ties
     -- between spells wait for the duration estimate, about a second after the cast).
+    -- Effects of one cast can show up a few updates apart: they give up together, from the first
+    -- one's arrival, so a cast is never split and its last effect matched alone to another spell.
+    local unattributed = {}
+    for _, e in ipairs(tracked) do
+        if e.spell == nil and e.born then unattributed[#unattributed + 1] = e end
+    end
+    local function GroupBorn(e)
+        local b = e.born
+        for _, o in ipairs(unattributed) do
+            if math.abs(o.born - e.born) <= 1.0 and o.born < b then b = o.born end
+        end
+        return b
+    end
     local pending = {}
     for _, e in ipairs(tracked) do
         if e.spell == nil and e.born then
             if JoinCast(e, present) then
                 -- attached to an earlier cast
-            elseif now - e.born > 8 then
+            elseif now - GroupBorn(e) > 8 then
                 e.spell = false
             else
                 pending[#pending + 1] = e
@@ -1396,9 +1409,44 @@ local function AttributeCasts(tracked, vm)
                 end
                 if ok then matching[#matching + 1] = n end
             end
-            list = matching
+            -- The first estimates are rough (44 s for a 50 s spell): if none fits, keep waiting.
+            if #matching > 0 then list = matching end
+        end
+        if #list > 1 and dropAmount and cast.drop and now - cast.drop.at >= 0.6 then
+            -- Same icons and durations (e.g. "Arc enchanté" 284 vs "Masse enchantée" 281): the
+            -- closest recorded cost wins, once the drop is complete.
+            local best
+            for _, n in ipairs(list) do
+                local c = spellbook.spells[n].cost
+                if c and c > 0 then
+                    local dist = math.abs(c - dropAmount)
+                    if not best or dist < best then best = dist end
+                end
+            end
+            if best then
+                list = Narrow(list, function(n)
+                    local c = spellbook.spells[n].cost
+                    return c and c > 0 and math.abs(c - dropAmount) <= best + 0.5
+                end)
+            end
         end
         return list
+    end
+    -- A single candidate must not contradict the measured durations (an "Épée liée" of 15 s is not
+    -- a bound weapon running for 50 s). Loose: the first estimates are rough.
+    local function DurationsFit(n)
+        for _, e in ipairs(group) do
+            if e.duration then
+                local found = false
+                for _, it in ipairs(SelfTimed(spellbook.spells[n])) do
+                    if it.se.icon == e.iconName and math.abs(it.se.duration - e.duration) <= math.max(5, it.se.duration * 0.3) then
+                        found = true
+                    end
+                end
+                if not found then return false end
+            end
+        end
+        return true
     end
     local exact, containing = SpellsMatching(icons)
     local isExact = {}
@@ -1420,6 +1468,13 @@ local function AttributeCasts(tracked, vm)
     local candidates = Choose(list)
     if candidates and #candidates > 1 then
         candidates = Narrow(candidates, function(n) return isExact[n] end)
+    end
+    if candidates and #candidates == 1 and not DurationsFit(candidates[1]) then
+        if not first.loggedMismatch then
+            first.loggedMismatch = true
+            Debug("cast: '%s' rejected, its durations do not match the effects' (%.0fs)", candidates[1], group[1].duration or -1)
+        end
+        candidates = {}
     end
     local partial = candidates ~= nil and #candidates == 1 and not isExact[candidates[1]]
     if candidates == nil then

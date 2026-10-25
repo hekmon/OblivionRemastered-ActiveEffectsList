@@ -54,6 +54,7 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        RECAST=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # same spell cast twice
        DISPEL=1 FULL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok   # dispel with rebuilt effects
        VRECAST=1 FULL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # visible recast keeps others
+       BOW=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok      # effects of one cast 0.3 s apart, same-icon spells
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -143,6 +144,16 @@ Do not install or reinstall something risky while the user is playing without te
   spell went 300 -> 263), so a cast identified by its effects updates the recorded cost from the
   magicka spent. When the HUD is not full, a hidden cast needs a strict cost match (2 points /
   2 %), so enemy magicka drains do not create effects.
+- **Ties between spells with the same icons and durations** ("Arc enchanté": bound weapon +
+  fortify, 50 s, cost 284; "Masse enchantée": same, cost 281) are settled by the closest recorded
+  cost once the drop is complete (both are within the cost tolerance). The first duration
+  estimates are rough (44 s for 50 s), so a duration filter that leaves no spell keeps waiting
+  instead of rejecting all. A single candidate whose durations contradict the estimate (more than
+  30 % / 5 s off) is rejected.
+- **Effects of one cast can appear a few updates apart** (in game, the fortify came 0.3 s before
+  the bound bow). The 8 s give-up timer counts from the first effect of the group, so the group
+  gives up together. Before this, the fortify gave up alone and the lone bow was matched to
+  "Épée liée" (15 s), the only spell with just a bound weapon.
 - **Leftovers:** effects not claimed by a cast within 8 s (e.g. already active when the mod
   started) are matched to the spell book by icon and estimated duration when only one spell fits.
 - **Learning is strict:** the hovered name must be found in the magic menu's spell lists, with a

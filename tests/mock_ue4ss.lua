@@ -92,6 +92,14 @@ end
 -- A Volonté fortify (90 s, cost 40) cast at 125 never appears; an enemy drain takes 37 magicka at 130.
 STUCK = os.getenv("STUCK") == "1"
 if STUCK then effects[#effects + 1] = { icon = "T_fortify_restoration", dur = 90, start = 125, hidden = true } end
+-- BOW=1: "Arc enchanté" (bound bow + fortify agility, 50 s, cost 284) cast at 115: its fortify
+-- effect shows 0.3 s before the bow, and the magicka drops with the bow. "Masse enchantée" has the
+-- same icons and duration (cost 281); "Épée liée" is a bound weapon alone (15 s, no cost recorded).
+BOW = os.getenv("BOW") == "1"
+if BOW then
+  effects[#effects + 1] = { icon = "T_fortify_restoration", dur = 50, start = 115.0 }
+  effects[#effects + 1] = { icon = "T_bound_weapon_conjuration", dur = 50, start = 115.3 }
+end
 if FULL then
   for _ = 1, 5 do effects[#effects + 1] = { icon = "T_bound_armor_conjuration", dur = 120, start = 112 } end
   effects[#effects + 1] = { icon = "T_shield_alteration", dur = 118, start = 120 }
@@ -126,6 +134,7 @@ local mt = { __index = function(t, k)
     if STUCK and gameTime >= 130 then m = m - 37 end
     if os.getenv("VRECAST") == "1" and gameTime >= 130 then m = m - 50 end
     if STUCK and os.getenv("RECAST") == "1" and gameTime >= 135 then m = m - 40 end -- same spell again
+    if BOW and gameTime >= 115.3 then m = m - 284 end
     if FULL and gameTime >= 112 then m = m - 121 end
     if FULL and gameTime >= 120 then m = m - 85 end
     return m
@@ -158,6 +167,9 @@ local mm = obj("VMagicMenuViewModel", "MM", {
     { Name = text("Égide"), Icon = T("T_shield_alteration"), Type = 4, InventoryIndex = 17, Property = 73 },
     { Name = text("Magic Well"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 18, Property = 277 },
     { Name = text("Renfort de Volonté supérieur"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 19, Property = 40 },
+    { Name = text("Arc enchanté"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 20, Property = 284 },
+    { Name = text("Masse enchantée"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 21, Property = 281 },
+    { Name = text("Épée liée"), Icon = T("T_bound_weapon_conjuration"), Type = 4, InventoryIndex = 22 },
   }),
   CurrentSpellEquiped = { Name = text("{Item}"), Type = 0 }, -- what the game showed after selecting a spell
   CurrentPageInventory = arr({}) })
@@ -177,11 +189,15 @@ local SPELL_EFFECTS = {
   [3071] = { eff("Bouclier", "", 50, 60, "T_shield_alteration", 0) },
   [3080] = { eff("Renfort : {0}", "Intelligence", 100, 56, "T_fortify_restoration", 0), eff("Renfort de Magie", "", 100, 56, "T_fortify_magicka_ultiplier_restoration", 0) },
   [3081] = { eff("Renfort : {0}", "Volonté", 10, 90, "T_fortify_restoration", 0) },
+  [3090] = { eff("Arc lié", "", 0, 50, "T_bound_weapon_conjuration", 0), eff("Renfort : {0}", "Agilité", 100, 50, "T_fortify_restoration", 0) },
+  [3091] = { eff("Masse liée", "", 0, 50, "T_bound_weapon_conjuration", 0), eff("Renfort : {0}", "Force", 100, 50, "T_fortify_restoration", 0) },
+  [3092] = { eff("Épée liée", "", 0, 15, "T_bound_weapon_conjuration", 0) },
 }
 local added = obj("VAddedEffectsListViewModel", "AddedVM")
 local SPELL_NAMES = { [3007] = "Nerver Give Up", [3049] = "Puissance de l'archer", [3050] = "Puissance du mage",
   [3060] = "Daedric Armor", [3061] = "Bouclier lié", [3070] = "Champ de Force", [3071] = "Égide",
-  [3080] = "Magic Well", [3081] = "Renfort de Volonté supérieur" }
+  [3080] = "Magic Well", [3081] = "Renfort de Volonté supérieur",
+  [3090] = "Arc enchanté", [3091] = "Masse enchantée", [3092] = "Épée liée" }
 -- As in the game: the panel instance is named after the menu's variable ("magic_details"), and the
 -- title is a WBP_AltarTextBlock user widget wrapping a VAltarTextBlock named text_block.
 local title = obj("VAltarTextBlock", "text_block", nil,
@@ -278,6 +294,7 @@ hoverSpell(3007); step(1, true)    -- quick look at the decoy
 hoverSpell(3049); step(2, true)   -- the spell that will be cast
 hoverSpell(3050); step(2, true)   -- decoy with the same icons
 if FULL or PARTIAL or STUCK then for _, id in ipairs({ 3060, 3061, 3070, 3071, 3080, 3081 }) do hoverSpell(id); step(1, true) end end
+if BOW then for _, id in ipairs({ 3090, 3091, 3092 }) do hoverSpell(id); step(1, true) end end
 HOVERED = nil
 step(9)          -- includes the fortify cast at gameTime 108
 step(10, true)   -- paused (menu open)

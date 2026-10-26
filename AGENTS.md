@@ -67,7 +67,8 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
 
    The mock raises an error if a widget is ever constructed inside a blueprint template.
 3. Install: `cp ActiveEffectsList/Scripts/*.lua "<game>/.../ue4ss/Mods/ActiveEffectsList/Scripts/"`.
-   Only copy the scripts: never overwrite the user's `spellbook.txt` in the installed folder.
+   Only copy the scripts: never overwrite the user's `spellbook.txt` or `permanent.txt` in the
+   installed folder. The mock writes both next to its copy: delete them between runs.
 4. Ask the user to restart the game and test, then read `UE4SS.log` directly from `/mnt/c`
    (the user does not need to send logs). If the game crashed, check the crash reports.
 
@@ -111,12 +112,19 @@ Do not install or reinstall something risky while the user is playing without te
   `T_fortify_restoration`), so names are matched by icon, using the common prefix when an icon is
   ambiguous ("Renfort"). French text uses a no-break space before ":".
   Filled when the player opens the magic menu.
-  Effects that are not casts (potions, shrines, the ichor pool of Deepscorn Hollow: three
-  fortify effects + chameleon, 20 min) get the page's names for their icon, minus the names
-  claimed by labeled effects ("Renfort : Volonté" for "Renfort : Volonté 100 (Nerver Give Up)"),
-  with the page's magnitude. Only when the page changed after they appeared, the counts agree,
-  and same-icon effects started together (so the order of names does not matter). Otherwise
-  the common prefix ("Renfort").
+  The page **also lists permanent effects** (gear enchantments, abilities: 23 fortify items in
+  the user's game) and **merges by type**: after Deepscorn Hollow's ichor basin (Fortify Health
+  25, Agility 10, Sneak 20, Chameleon 50, 1200 s) it showed "Renfort : Agilité 20" (10 gear + 10
+  basin) and "Renfort : Discrétion 27" (7 + 20). The menu's list is **emptied when the menu
+  closes**: keep the last non-empty page.
+  Effects that are not casts are named from the page minus a baseline of permanent effects
+  (`permanent.txt` next to the Scripts folder, name -> magnitude per icon). The baseline is
+  recorded only at the moment a page is read, for icons with no unnamed timed effect, HUD not
+  full, minus the recognized casts' magnitudes (names a cast adds to keep their old value:
+  spell effectiveness, e.g. 95 %, makes real magnitudes differ). Names are given only when the
+  page changed after the effects appeared, the increases' count equals the unnamed effects'
+  count, and same-icon effects started together. Without a recorded page: no names (a version
+  that subtracted names instead of magnitudes showed wrong ones, e.g. "Renfort : Chance 10").
 - **Spell book (`spellbook.txt` next to the Scripts folder, written by the mod):** when a spell is
   hovered in the magic menu, the game fills `VAddedEffectsListViewModel.ModernAddedItemEffectsList`
   (`FModernEffectItemData`: `EffectName`, `AdditionalEffectName`, `Magnitude`, `Duration` in

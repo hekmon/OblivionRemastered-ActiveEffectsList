@@ -1,5 +1,6 @@
 # Personal game data written by the mod next to its Scripts folder
 spellbook.txt
+permanent.txt
 
 # Runtime artifacts from the game folder
 *.log

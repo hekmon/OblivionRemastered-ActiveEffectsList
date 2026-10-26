@@ -1660,23 +1660,67 @@ local function RefreshIconNames()
                     end
                 end
             end
+            -- The list is emptied when the menu closes: keep the last page seen.
             local sig = table.concat(parts, ";")
-            if sig ~= activePage.sig then
+            if #items > 0 and sig ~= activePage.sig then
                 activePage.items, activePage.sig, activePage.at = items, sig, Now()
-                if #items > 0 then
-                    Debug("active effects page: %s", table.concat(parts, ", "))
-                end
+                activePage.fresh = true
+                Debug("active effects page: %s", table.concat(parts, ", "))
             end
             return
         end
     end
 end
 
+-- Permanent effects (enchanted gear, abilities, birthsign) are on the page too, merged with timed
+-- ones of the same type ("Renfort : Agilité 20" = 10 from gear + 10 from a shrine). A baseline of
+-- the page without unknown timed effects (name -> magnitude per icon) is kept in permanent.txt:
+-- what rose above it belongs to the new effects.
+local PERMANENT_FILE = (ModDir() or "") .. "permanent.txt"
+local baseline = {} -- icon -> { [name] = magnitude }; an icon missing = no permanent effect
+local baselineValid = false -- a page has been recorded at least once
+
+local function LoadBaseline()
+    local f = io.open(PERMANENT_FILE, "r")
+    if not f then return end
+    baselineValid = true
+    for line in f:lines() do
+        local icon, name, mag = line:match("^(.-)\t(.-)\t(.*)$")
+        if icon and tonumber(mag) then
+            baseline[icon] = baseline[icon] or {}
+            baseline[icon][name] = tonumber(mag)
+        end
+    end
+    f:close()
+end
+
+local function SaveBaseline()
+    local f = io.open(PERMANENT_FILE, "w")
+    if not f then return end
+    local icons = {}
+    for icon in pairs(baseline) do icons[#icons + 1] = icon end
+    table.sort(icons)
+    for _, icon in ipairs(icons) do
+        local names = {}
+        for n in pairs(baseline[icon]) do names[#names + 1] = n end
+        table.sort(names)
+        for _, n in ipairs(names) do f:write(string.format("%s\t%s\t%s\n", icon, n, baseline[icon][n])) end
+    end
+    f:close()
+end
+pcall(LoadBaseline)
+
+-- "Renfort : Volonté 100" -> "Renfort : Volonté", 100 (nil magnitude when there is none).
+local function SplitMagnitude(label)
+    local name, mag = label:match("^(.-)%s+(%d+)$")
+    if name then return name, tonumber(mag) end
+    return label, nil
+end
+
 -- Names for effects that are not from a recognized cast (potions, shrines, pools...), from the
--- active effects page: for each icon, the page's names not already accounted for by labeled
--- effects. Only used when the page was seen after those effects appeared and the counts agree;
--- several unnamed effects of one icon must also have started together (same fraction), so it
--- does not matter which name goes on which line.
+-- active effects page. Only used when the page was seen after those effects appeared and the
+-- counts agree; several unnamed effects of one icon must also have started together (same
+-- fraction), so it does not matter which name goes on which line.
 local function PageLabels(tracked)
     local out = {}
     local byIcon = {}
@@ -1685,6 +1729,62 @@ local function PageLabels(tracked)
         byIcon[t.iconName] = g
         if t.effectLabel then g.labeled[#g.labeled + 1] = t else g.unnamed[#g.unnamed + 1] = t end
     end
+    local pageByIcon = {}
+    for _, it in ipairs(activePage.items) do
+        pageByIcon[it.icon] = pageByIcon[it.icon] or {}
+        table.insert(pageByIcon[it.icon], it)
+    end
+    -- What labeled effects (recognized casts) add to the page, per name; false = unknown amount.
+    local function Contributions(g)
+        local add = {}
+        for _, t in ipairs(g.labeled) do
+            local name, mag = SplitMagnitude(t.effectLabel)
+            if mag and add[name] ~= false then add[name] = (add[name] or 0) + mag else add[name] = false end
+        end
+        return add
+    end
+
+    -- A page just read (not later: effects may have ended since), with no unknown timed effect of
+    -- an icon and nothing hidden by a full HUD: it is that icon's baseline.
+    local hudFull = #tracked >= config.HudLimit
+    local justRead = activePage.fresh
+    activePage.fresh = false
+    if justRead and not hudFull then
+        local changed = false
+        for icon, items in pairs(pageByIcon) do
+            local g = byIcon[icon] or { labeled = {}, unnamed = {} }
+            local add = Contributions(g)
+            local known = #g.unnamed == 0
+            for _, v in pairs(add) do if v == false then known = false end end
+            if known then
+                -- Names that recognized casts also add to are kept as they were: the real
+                -- magnitude can differ from the book's (spell effectiveness, e.g. 95 %).
+                local old = baseline[icon] or {}
+                local b = {}
+                for _, it in ipairs(items) do
+                    if add[it.name] then
+                        b[it.name] = old[it.name]
+                    elseif (it.magnitude or 0) >= 1 then
+                        b[it.name] = it.magnitude
+                    end
+                end
+                for n, m in pairs(b) do if old[n] ~= m then changed = true end end
+                for n in pairs(old) do if b[n] == nil then changed = true end end
+                baseline[icon] = b
+            end
+        end
+        -- Icons no longer on the page (gear taken off): no permanent effect left.
+        for icon in pairs(baseline) do
+            local g = byIcon[icon]
+            if not pageByIcon[icon] and not (g and #g.unnamed > 0) then baseline[icon] = nil; changed = true end
+        end
+        if changed or not baselineValid then
+            baselineValid = true
+            pcall(SaveBaseline)
+            Debug("permanent effects updated from the active effects page")
+        end
+    end
+
     for icon, g in pairs(byIcon) do
         if #g.unnamed > 0 then
             local fresh, together = true, true
@@ -1692,16 +1792,22 @@ local function PageLabels(tracked)
                 if not t.born or t.born > activePage.at then fresh = false end
                 if math.abs(t.f - g.unnamed[1].f) > 0.005 then together = false end
             end
+            local items = pageByIcon[icon] or {}
             local names = {}
-            for _, it in ipairs(activePage.items) do
-                if it.icon == icon then names[#names + 1] = it end
-            end
-            for _, t in ipairs(g.labeled) do
-                for k, it in ipairs(names) do
-                    if t.effectLabel:sub(1, #it.name) == it.name then table.remove(names, k); break end
+            -- What rose above the permanent effects and the recognized casts. Without a recorded
+            -- page the permanent effects are unknown: no names (rather than wrong ones).
+            local base = baseline[icon] or (baselineValid and {} or nil)
+            if base then
+                local add = Contributions(g)
+                for _, it in ipairs(items) do
+                    if add[it.name] ~= false then
+                        local cast = add[it.name] or 0
+                        local extra = (it.magnitude or 0) - (base[it.name] or 0) - cast
+                        if extra >= math.max(1, cast * 0.1) then names[#names + 1] = { name = it.name, magnitude = extra } end
+                    end
                 end
             end
-            if fresh and together and #names == #g.unnamed then
+            if base and fresh and together and #names == #g.unnamed then
                 table.sort(names, function(a, b) return a.name < b.name end)
                 table.sort(g.unnamed, function(a, b) return (a.uid or 0) < (b.uid or 0) end)
                 for k, t in ipairs(g.unnamed) do

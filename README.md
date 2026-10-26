@@ -25,7 +25,8 @@ works with the vanilla HUD), without modifying it.
 - **Open the magic menu once after a potion, scroll, shrine or pool.** Effects that share an icon
   (all the fortify effects do) then each get their own name ("Renfort : Force 20" instead of
   "Renfort"). See [effects that are not your spells](#effects-that-are-not-your-spells).
-- **When updating, only replace the `Scripts` folder**: `spellbook.txt` holds what the mod learned.
+- **When updating, only replace the `Scripts` folder**: `spellbook.txt` and `permanent.txt` hold
+  what the mod learned.
 
 ## How it works
 
@@ -74,9 +75,13 @@ cast. (Effects without a duration, like abilities, constant-effect enchantments 
 not listed at all: the game's HUD only reports timed effects.)
 
 Their names come from the magic menu's Active Effects page, or from the spell book when one spell
-matches their icon and duration. **Open the magic menu once after drinking a potion or using a
-shrine**: several effects with the same icon (all the fortify effects share one) then each get
-their own name with its magnitude, e.g. "Renfort : Force 20" instead of "Renfort". Their time
+matches their icon and duration. That page also lists your permanent effects (enchanted gear,
+abilities), added together by type: "Renfort : Agilité 20" can be 10 from a ring and 10 from a
+shrine. So the mod records the page each time you open the magic menu without unknown timed
+effects running (in `permanent.txt`), and what rose above it belongs to the new effects.
+**Open the magic menu once after drinking a potion or using a shrine**: several effects with the
+same icon (all the fortify effects share one) then each get their own name with its magnitude,
+e.g. "Renfort : Discrétion 20" instead of "Renfort". Their time
 left is estimated from how fast the bar drains (shown as `...` for about a second).
 
 ## Limits
@@ -94,7 +99,7 @@ left is estimated from how fast the bar drains (shown as `...` for about a secon
 Copy the `ActiveEffectsList` folder into
 `OblivionRemastered/Binaries/Win64/ue4ss/Mods/`.
 It is enabled by its `enabled.txt`.
-When updating, only replace the `Scripts` folder: keep your `spellbook.txt`.
+When updating, only replace the `Scripts` folder: keep your `spellbook.txt` and `permanent.txt`.
 
 ## Settings
 `ActiveEffectsList/Scripts/config.lua`: font and icon size, list width and position, bars, colors,

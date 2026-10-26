@@ -105,9 +105,9 @@ end
 -- "Pas voilés" has the same icon, 30 s, cost 17.
 CHAM = os.getenv("CHAM") == "1"
 if CHAM then effects[#effects + 1] = { icon = "T_chameleon_illusion", dur = 60, start = 115.0 } end
--- POOL=1: a pool (like Deepscorn Hollow's ichor) at 116 gives three fortify effects and a
--- chameleon, 20 min, no magicka spent. The magic menu is opened at 118: its active effects page
--- then lists them (with the archer spell's two fortify effects).
+-- POOL=1: Deepscorn Hollow's ichor basin at 116 gives Fortify Health 25, Agility 10, Sneak 20 and
+-- Chameleon 50, 20 min, no magicka spent. The active effects page also lists permanent effects
+-- (Agility 10, Sneak 7, Luck 10), merged by type. The magic menu is opened at 118.
 POOL = os.getenv("POOL") == "1"
 if POOL then
   for _ = 1, 3 do effects[#effects + 1] = { icon = "T_fortify_restoration", dur = 1200, start = 116 } end
@@ -172,8 +172,7 @@ local mainWidget = obj("WBP_ModernHud_Main_C", "WBP_ModernHud_Main", { HUDMainVi
 icons.__outer.__outer = mainWidget
 local function item(name, icon) return { Name = text(name), Icon = T(icon), Type = 8 } end
 -- Full list as in the game: Active effects page items (Type 8) and spells, with InventoryIndex.
-local mm = obj("VMagicMenuViewModel", "MM", {
-  Inventory = arr({
+local INV = {
     item("Caméléon", "T_chameleon_illusion"), item("Vision nocturne", "T_night_eye_illusion"),
     item("Renfort : Volonté", "T_fortify_restoration"), item("Renfort : Force", "T_fortify_restoration"),
     item("Renfort : Intelligence", "T_fortify_restoration"), item("Renfort de Magie", "T_fortify_magicka_ultiplier_restoration"),
@@ -192,7 +191,15 @@ local mm = obj("VMagicMenuViewModel", "MM", {
     { Name = text("Épée liée"), Icon = T("T_bound_weapon_conjuration"), Type = 4, InventoryIndex = 22 },
     { Name = text("Caméléon"), Icon = T("T_chameleon_illusion"), Type = 4, InventoryIndex = 23, Property = 239 },
     { Name = text("Pas voilés"), Icon = T("T_chameleon_illusion"), Type = 4, InventoryIndex = 24, Property = 17 },
-  }),
+}
+if POOL then
+  -- permanent effects (enchanted gear, abilities) on the active effects page
+  INV[#INV + 1] = { Name = text("Renfort : Agilité"), Icon = T("T_fortify_restoration"), Type = 8, Property = 10 }
+  INV[#INV + 1] = { Name = text("Renfort : Discrétion"), Icon = T("T_fortify_restoration"), Type = 8, Property = 7 }
+  INV[#INV + 1] = { Name = text("Renfort : Chance"), Icon = T("T_fortify_restoration"), Type = 8, Property = 10 }
+end
+local mm = obj("VMagicMenuViewModel", "MM", {
+  Inventory = arr(INV),
   -- what the game showed after selecting a spell; USERTEXT=1: a custom spell's raw name key
   CurrentSpellEquiped = os.getenv("USERTEXT") == "1" and { Name = text("UserInputText_104_471_22"), Icon = T("T_fortify_restoration"), Type = 0 }
     or { Name = text("{Item}"), Type = 0 },
@@ -308,10 +315,10 @@ local function step(sec, pause)
       local function act(name, icon, mag) return { Name = text(name), Icon = T(icon), Type = 8, Property = mag } end
       local page = {
         act("Caméléon", "T_chameleon_illusion", 100), act("Vision nocturne", "T_night_eye_illusion", 0),
-        act("Renfort : Agilité", "T_fortify_restoration", 100), act("Renfort : Archerie", "T_fortify_restoration", 30),
+        act("Renfort : Agilité", "T_fortify_restoration", 120), act("Renfort : Archerie", "T_fortify_restoration", 30),
         act("Renfort de Magie", "T_fortify_magicka_ultiplier_restoration", 100),
-        act("Renfort : Force", "T_fortify_restoration", 20), act("Renfort : Endurance", "T_fortify_restoration", 20),
-        act("Renfort : Vitesse", "T_fortify_restoration", 20) }
+        act("Renfort de Santé", "T_fortify_restoration", 25), act("Renfort : Discrétion", "T_fortify_restoration", 27),
+        act("Renfort : Chance", "T_fortify_restoration", 10) }
       mm.Inventory = arr(page)
     end
     if HOVERED and HOVER_HOOK then HOVER_HOOK(nil, { get = function() return HOVERED end }) end

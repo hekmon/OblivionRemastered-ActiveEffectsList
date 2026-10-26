@@ -127,7 +127,10 @@ local function hudArrays()
   if CHAM and gameTime >= 115.5 and gameTime < 118.5 then gameTime = 115.5 end
   for _, e in ipairs(effects) do
     -- DISPEL=1: everything active is removed at 140 (Dissipation)
-    local dispelled = (os.getenv("DISPEL") == "1" and gameTime >= 140 and e.start < 140) or (e.stop and gameTime >= e.stop)
+    -- SELFDISPEL=1: the player casts "Dissipation suprême" (cost 42) at 140; use with HUD_CAP=0,
+    -- where the game's HUD list shows nothing and every effect is rebuilt.
+    local dispelled = ((os.getenv("DISPEL") == "1" or os.getenv("SELFDISPEL") == "1") and gameTime >= 140 and e.start < 140)
+      or (e.stop and gameTime >= e.stop)
     if gameTime >= e.start and not dispelled then
       local f = 1 - (gameTime - e.start) / e.dur
       if f > 0 and #ic < HUD_CAP and not e.hidden then ic[#ic + 1] = T(e.icon); tl[#tl + 1] = f end
@@ -153,12 +156,14 @@ local mt = { __index = function(t, k)
     if os.getenv("VRECAST") == "1" and gameTime >= 130 then m = m - 50 end
     if STUCK and os.getenv("RECAST") == "1" and gameTime >= 135 then m = m - 40 end -- same spell again
     if BOW and gameTime >= 115.3 then m = m - 284 end
+    if os.getenv("SELFDISPEL") == "1" and gameTime >= 140 then m = m - 42 end
     if CHAM and gameTime >= 115 then m = m - 239 end
     if FULL and gameTime >= 112 then m = m - 121 end
     if FULL and gameTime >= 120 then m = m - 85 end
     return m
   elseif k == "SpellIcon" then
     if CHAM and gameTime >= 114 then return T("T_chameleon_illusion") end
+    if os.getenv("SELFDISPEL") == "1" and gameTime >= 139 then return T("T_dispel_mysticism") end
     if PARTIAL and gameTime >= 115 then return T("T_fortify_restoration") end
     if PARTIAL and gameTime >= 111 then return T("T_bound_armor_conjuration") end
     if FULL and gameTime >= 119 then return T("T_shield_alteration") end
@@ -191,6 +196,7 @@ local INV = {
     { Name = text("Épée liée"), Icon = T("T_bound_weapon_conjuration"), Type = 4, InventoryIndex = 22 },
     { Name = text("Caméléon"), Icon = T("T_chameleon_illusion"), Type = 4, InventoryIndex = 23, Property = 239 },
     { Name = text("Pas voilés"), Icon = T("T_chameleon_illusion"), Type = 4, InventoryIndex = 24, Property = 17 },
+    { Name = text("Dissipation suprême"), Icon = T("T_dispel_mysticism"), Type = 4, InventoryIndex = 25, Property = 42 },
 }
 if POOL then
   -- permanent effects (enchanted gear, abilities) on the active effects page
@@ -225,13 +231,14 @@ local SPELL_EFFECTS = {
   [3092] = { eff("Épée liée", "", 0, 15, "T_bound_weapon_conjuration", 0) },
   [3093] = { eff("Caméléon", "", 100, 60, "T_chameleon_illusion", 0) },
   [3094] = { eff("Caméléon", "", 15, 30, "T_chameleon_illusion", 0) },
+  [3095] = { eff("Dissipation", "", 150, -1, "T_dispel_mysticism", 0) },
 }
 local added = obj("VAddedEffectsListViewModel", "AddedVM")
 local SPELL_NAMES = { [3007] = "Nerver Give Up", [3049] = "Puissance de l'archer", [3050] = "Puissance du mage",
   [3060] = "Daedric Armor", [3061] = "Bouclier lié", [3070] = "Champ de Force", [3071] = "Égide",
   [3080] = "Magic Well", [3081] = "Renfort de Volonté supérieur",
   [3090] = "Arc enchanté", [3091] = "Masse enchantée", [3092] = "Épée liée",
-  [3093] = "Caméléon", [3094] = "Pas voilés" }
+  [3093] = "Caméléon", [3094] = "Pas voilés", [3095] = "Dissipation suprême" }
 -- As in the game: the panel instance is named after the menu's variable ("magic_details"), and the
 -- title is a WBP_AltarTextBlock user widget wrapping a VAltarTextBlock named text_block.
 local title = obj("VAltarTextBlock", "text_block", nil,
@@ -341,6 +348,7 @@ hoverSpell(3050); step(2, true)   -- decoy with the same icons
 if FULL or PARTIAL or STUCK then for _, id in ipairs({ 3060, 3061, 3070, 3071, 3080, 3081 }) do hoverSpell(id); step(1, true) end end
 if BOW then for _, id in ipairs({ 3090, 3091, 3092 }) do hoverSpell(id); step(1, true) end end
 if CHAM then for _, id in ipairs({ 3093, 3094 }) do hoverSpell(id); step(1, true) end end
+if os.getenv("SELFDISPEL") == "1" then hoverSpell(3095); step(1, true) end
 HOVERED = nil
 step(9)          -- includes the fortify cast at gameTime 108
 step(10, true)   -- paused (menu open)

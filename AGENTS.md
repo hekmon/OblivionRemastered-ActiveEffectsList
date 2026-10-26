@@ -61,6 +61,7 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        GLITCH=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok   # HUD list empty for one update
        POOL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok     # pool effects named from the active page
        RELOAD=1 TELEPORT=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # game time passing during a loading screen
+       SELFDISPEL=1 STUCK=1 HUD_CAP=0 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # dispel cast, HUD list empty
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -182,7 +183,12 @@ Do not install or reinstall something risky while the user is playing without te
   are removed, the whole cast is dropped (its rebuilt effects too). If effects of two or more
   casts go at once, it is a dispel: every rebuilt effect is dropped (seen in game: after
   "Dissipation suprême" the rebuilt Daedric Armor pieces stayed, frozen). Removals within 3 s of
-  a loading screen are ignored. When the HUD reports no effect at all, the mod's clock follows
+  a loading screen are ignored.
+  The HUD list can also show **nothing at all** while effects run (seen: "HUD effects (0)" with
+  Daedric Armor and Warrior Spirit active, both rebuilt as hidden casts). Then a dispel removes
+  nothing visible. So a **dispel cast** is recognized directly: a magicka drop with the equipped
+  spell's icon and an exact cost (2 points / 2 %) of a book spell with a self dispel effect
+  ("Dissipation suprême", icon `T_dispel_mysticism`, duration -1) drops every rebuilt effect. When the HUD reports no effect at all, the mod's clock follows
   real time (unless `bIsMenuMode`), otherwise rebuilt effects freeze.
 - **Spell costs:** the list item's `Property` is the magicka cost (confirmed: the drops measured in
   game equal the costs shown in the menu, e.g. 141, 263, 280). Costs change as skills go up (one

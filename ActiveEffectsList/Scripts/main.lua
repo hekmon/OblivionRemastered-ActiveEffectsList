@@ -1388,7 +1388,27 @@ local function AttributeCasts(tracked, vm)
         for _, e in ipairs(tracked) do
             if e.born and e.born >= d.at - 2 and e.born <= d.at + 1.5 then visible = true end
         end
-        if visible then
+        -- A dispel cast on self (equipped spell with a self dispel effect, exact cost): every
+        -- rebuilt effect goes. When the game's HUD list shows nothing, there is no removal to
+        -- see (seen in game: "Dissipation suprême" left the rebuilt Daedric Armor on screen).
+        local dispel
+        for name, s in pairs(spellbook.spells) do
+            if s.icon == d.icon and CostMatches(s, d.amount, true) == true then
+                for _, se in ipairs(s.effects) do
+                    if se.range == RANGE_SELF and se.icon:find("dispel", 1, true) then dispel = name end
+                end
+            end
+        end
+        if dispel then
+            local n = 0
+            for _, rec in pairs(castRecords) do
+                for _, it in ipairs(SelfTimed(spellbook.spells[rec.spell] or { effects = {} })) do
+                    if SlotFree(rec, it.k, present) then n = n + 1 end
+                end
+                DropRecord(rec, present)
+            end
+            Debug("cast: dispel '%s' (%.0f magicka spent): %d rebuilt effect(s) dropped", dispel, d.amount, n)
+        elseif visible then
             Debug("magicka drop of %.0f: new effects appeared (handled as a visible cast)", d.amount)
         else
             local cands = {}

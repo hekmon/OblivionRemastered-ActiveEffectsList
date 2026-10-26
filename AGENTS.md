@@ -88,6 +88,13 @@ Do not install or reinstall something risky while the user is playing without te
   save is loaded. Gate on the hook `/Script/Altar.VLevelChangeData:OnFadeToGameBeginEventReceived`
   (and `OnFadeToBlackBeginEventReceived` to stop).
 
+### Not caused by the mod (checked)
+- Night Eye's visual vanishing after the cast animation: it came back after the user's
+  DLSS / Ultra+ changes, with the mod unchanged. The game kept the effect active the whole time.
+- Quest markers missing from both compass and map: fixed by loading an earlier save. The mod
+  never touches the compass or the map (it only reads the compass's font).
+- Game crashes when a Windows notification shows over the game (DLSS).
+
 ### Data sources
 - **`VHUDMainViewModel`** (`FindAllOf`, skip templates):
   - `EffectsIcons`: `TArray<UTexture2D*>`, one per timed effect, in cast order (expired ones are

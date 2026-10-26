@@ -114,6 +114,8 @@ local paused = false
 local function hudArrays()
   local ic, tl = {}, {}
   local gameTime = gameTime
+  -- GLITCH=1: for one update the game's list is empty, then everything is back unchanged.
+  if os.getenv("GLITCH") == "1" and math.abs(gameTime - 125) < 0.01 then return ic, tl end
   if CHAM and gameTime >= 115.5 and gameTime < 118.5 then gameTime = 115.5 end
   for _, e in ipairs(effects) do
     -- DISPEL=1: everything active is removed at 140 (Dissipation)
@@ -130,7 +132,7 @@ local mt = { __index = function(t, k)
   local ic, tl = hudArrays()
   if k == "EffectsIcons" then return arr(ic) elseif k == "EffectsTimeLeft" then return arr(tl)
   elseif k == "CurrentMagickaValue" then
-    local m = 400.0
+    local m = 400.0 - (MAGOFF or 0)
     if PARTIAL then
       if gameTime >= 112 then m = m - 121 end
       if gameTime >= 116 then m = m - 277 end
@@ -372,6 +374,12 @@ if os.getenv("RELOAD") == "1" then
   end })
   mainWidget.HUDMainViewModel = vm2
   registry.VHUDMainViewModel = { vm, vm2 }
+  -- LOADSAVE=1: the loading screen loads an older save: effects are 10 s less far along, and
+  -- magicka is 57 lower, without any cast.
+  if os.getenv("LOADSAVE") == "1" then
+    for _, e in ipairs(effects) do e.start = e.start + 10 end
+    MAGOFF = 57
+  end
   hooks["/Script/Altar.VLevelChangeData:OnFadeToGameBeginEventReceived"]()
   canvas = root.children[#root.children]
 end

@@ -632,20 +632,18 @@ local function UpdateTracker(hud, running)
     local dt = tracker.lastReal and math.max(0, now - tracker.lastReal) or 0
     tracker.lastReal = now
 
-    -- No effect on the HUD: nothing to watch, follow real time while the game runs (rebuilt
-    -- effects keep counting down).
-    if #hud == 0 then
-        if running then tracker.activeClock = tracker.activeClock + math.min(dt, 1.0) end
-        tracker.pending = 0
-        tracker.lastFractions = ""
-    end
-
     -- Advance the clock only while fractions move (they freeze when the game is paused).
     local parts = {}
     for _, h in ipairs(hud) do parts[#parts + 1] = string.format("%.5f", h.f) end
     local sig = table.concat(parts, ";")
     tracker.pending = tracker.pending + dt
-    if sig ~= tracker.lastFractions then
+    if #hud == 0 then
+        -- No effect on the HUD: nothing to watch, follow real time while the game runs (rebuilt
+        -- effects keep counting down).
+        if running then tracker.activeClock = tracker.activeClock + math.min(dt, 1.0) end
+        tracker.pending = 0
+        tracker.lastFractions = ""
+    elseif sig ~= tracker.lastFractions then
         if tracker.lastChange then
             local gap = now - tracker.lastChange
             if gap > tracker.maxGap then tracker.maxGap = gap end
@@ -669,6 +667,20 @@ local function UpdateTracker(hud, running)
     local new = {}
     local kept = {}
     local j = 1
+    -- Entries missing from the HUD for less than a second ("ghosts"): the game's list can drop
+    -- effects for an update (seen while recasting quickly) and give them back unchanged.
+    tracker.ghosts = tracker.ghosts or {}
+    local function Resurrect(h)
+        local best, bestDiff
+        for i, g in ipairs(tracker.ghosts) do
+            local diff = g.e.f - h.f
+            if g.e.iconName == h.iconName and diff >= -0.01 and diff <= 0.05 and (not best or diff < bestDiff) then
+                best, bestDiff = i, diff
+            end
+        end
+        if not best then return nil end
+        return table.remove(tracker.ghosts, best).e
+    end
     for _, h in ipairs(hud) do
         local matched = nil
         for k = j, #old do
@@ -680,7 +692,7 @@ local function UpdateTracker(hud, running)
                 break
             end
         end
-        local e = matched
+        local e = matched or Resurrect(h)
         if not e then
             tracker.uidCounter = (tracker.uidCounter or 0) + 1
             e = { iconName = h.iconName, f0 = h.f, t0 = clock, born = now, uid = tracker.uidCounter }
@@ -705,15 +717,28 @@ local function UpdateTracker(hud, running)
         new[#new + 1] = e
     end
     -- Entries gone with time still left: removed by the game (dispel, cure...), not expired.
-    tracker.removedEarly = {}
+    -- Decided once they have been gone for a second (see ghosts above).
     for _, o in ipairs(old) do
         if not kept[o] then
+            local back = false
+            for _, e in ipairs(new) do if e == o then back = true end end
+            if not back then tracker.ghosts[#tracker.ghosts + 1] = { e = o, since = now } end
+        end
+    end
+    tracker.removedEarly = {}
+    local ghosts = {}
+    for _, g in ipairs(tracker.ghosts) do
+        if now - g.since < 1.0 then
+            ghosts[#ghosts + 1] = g
+        else
+            local o = g.e
             local left = o.duration and (o.f * o.duration) or nil
             if (left and left > 1.5) or (not left and o.f > 0.05) then
                 tracker.removedEarly[#tracker.removedEarly + 1] = o
             end
         end
     end
+    tracker.ghosts = ghosts
     tracker.entries = new
     return new
 end
@@ -1309,13 +1334,16 @@ local function AttributeCasts(tracked, vm)
         if e.spell == nil and e.born then
             if JoinCast(e, present) then
                 -- attached to an earlier cast
+            elseif cast.reloadAt and e.born - cast.reloadAt < 3 and e.born >= cast.reloadAt then
+                e.spell = false -- already active when the level loaded
             elseif now - GroupBorn(e) > 8 then
                 e.spell = false
             else
                 pending[#pending + 1] = e
             end
         end
-        if e.spell == false then MatchLeftover(e, present) end
+        -- Leftovers: join a known cast (e.g. one matched by another leftover), else the book.
+        if e.spell == false and not JoinCast(e, present) then MatchLeftover(e, present) end
     end
 
     -- A cast whose effects are all hidden: magicka dropped, nothing new appeared on the HUD.
@@ -1973,6 +2001,11 @@ local function Update()
             if Valid(w) and not IsTemplate(w) then n = n + 1 end
         end
         state.lastDisplay = nil
+        -- Across a loading screen (a loaded save, a door) magicka and the HUD's effects change
+        -- without any cast: forget the last magicka value, and effects seen right after it are
+        -- not new casts.
+        cast.lastMagicka, cast.drop = nil, nil
+        cast.reloadAt = Now()
         Debug("loading screen done: re-attaching (%d live HUD effect widgets)", n)
     end
     local player = GetPlayer()

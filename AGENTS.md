@@ -57,6 +57,8 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        BOW=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok      # effects of one cast 0.3 s apart, same-icon spells
        COSTUP=1 USERTEXT=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # outdated cost, raw custom name
        CHAM=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok     # duration estimate creeping after a menu
+       RELOAD=1 LOADSAVE=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # loading an older save
+       GLITCH=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok   # HUD list empty for one update
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -120,7 +122,11 @@ Do not install or reinstall something risky while the user is playing without te
   reported 0 effects forever. The game had evidently made a new one at load. The view model is
   now read on every update from the attached HUD widget (`WBP_ModernHud_Main.HUDMainViewModel`),
   and caches are reset when the fade-to-game hook fires. Do not cache game objects across
-  loading screens.
+  loading screens. Loading a save changes magicka and the effects' fractions without any cast
+  (seen: a "drop" of 57 and Warrior Spirit's effects back from 75 % to 81 %): the last magicka
+  value is forgotten at each loading screen, and effects first seen within 3 s after it are
+  leftovers, not casts. Leftovers also join a known cast (same timer), so one leftover matched
+  to the book brings its siblings along.
 - **HUD limit: the game's HUD list holds at most 8 effects** (`HudLimit`). Further effects are
   hidden by the game and appear later, already part-way through their timer, as others expire.
   Recognized casts are kept as cast records (spell + start time). Their effects that are missing
@@ -135,6 +141,13 @@ Do not install or reinstall something risky while the user is playing without te
   Oblivion; the duration restarts). A new cast record removes older records of the same spell,
   and HUD entries of replaced casts are hidden. Otherwise a recast whose effects the game hides
   shows twice (seen in a fight with "Daywalker").
+- **The HUD list can drop effects for one update** and give them back unchanged (seen while
+  recasting "Renvoi de sort" every 4 s: a false dispel, then Nerver Give Up's fortify re-born
+  and matched to another spell). An entry missing from the HUD stays a "ghost" for 1 s: if an
+  item with its icon and fraction comes back, it is the same entry. Removals are decided after
+  that second.
+- When the HUD list is empty, the clock follows real time; that update must not also be
+  credited again on the next one (it was, making estimates drift by ~1 %).
 - **Removed effects (dispel, cure, recast):** an entry that leaves the HUD with more than 1.5 s
   left was removed, not expired; its slot is never rebuilt. If all the visible effects of a cast
   are removed, the whole cast is dropped (its rebuilt effects too). If effects of two or more

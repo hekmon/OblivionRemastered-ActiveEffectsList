@@ -18,6 +18,15 @@ Replaces the HUD row of active-effect icons with a column above the health / mag
 Made to sit on top of [Better HUD](https://www.nexusmods.com/oblivionremastered/mods/13) (also
 works with the vanilla HUD), without modifying it.
 
+## Tips
+- **Hover each of your buff spells once** in the magic menu, for half a second (custom spells
+  too, and again after creating a new one). The mod then knows their effects, names and
+  durations for good. See [the spell book](#the-spell-book-hover-your-spells-once).
+- **Open the magic menu once after a potion, scroll, shrine or pool.** Effects that share an icon
+  (all the fortify effects do) then each get their own name ("Renfort : Force 20" instead of
+  "Renfort"). See [effects that are not your spells](#effects-that-are-not-your-spells).
+- **When updating, only replace the `Scripts` folder**: `spellbook.txt` holds what the mod learned.
+
 ## How it works
 
 ### What the game gives
@@ -62,18 +71,21 @@ cost is updated from the magicka actually spent.
 ### Effects that are not your spells
 Potions, scrolls, shrines and enemy spells do not use your magicka, so they cannot be matched to a
 cast. (Effects without a duration, like abilities, constant-effect enchantments and diseases, are
-not listed at all: the game's HUD only reports timed effects.) They are shown with the effect's name when the mod knows it
-(learned from the magic menu's Active Effects page, opened at least once per session, or matched
-by icon and duration to the spell book), and their time left is estimated from how fast the bar
-drains (shown as `...` for about a second).
+not listed at all: the game's HUD only reports timed effects.)
+
+Their names come from the magic menu's Active Effects page, or from the spell book when one spell
+matches their icon and duration. **Open the magic menu once after drinking a potion or using a
+shrine**: several effects with the same icon (all the fortify effects share one) then each get
+their own name with its magnitude, e.g. "Renfort : Force 20" instead of "Renfort". Their time
+left is estimated from how fast the bar drains (shown as `...` for about a second).
 
 ## Limits
 - A spell never hovered in the magic menu is unknown: if the game hides its effects, the mod cannot
   show them, and visible ones only get a generic name.
 - Effects hidden by the game that are not your own casts (potions, enemy spells...) cannot be
   rebuilt.
-- Fortify effects all share one icon. Without the spell book they only show as "Renfort"
-  (Fortify), not which attribute or skill.
+- Fortify effects all share one icon. Without the spell book, or the magic menu opened after
+  they started, they only show as "Renfort" (Fortify), not which attribute or skill.
 
 ## Requirements
 - UE4SS for Oblivion Remastered (3.0.x)

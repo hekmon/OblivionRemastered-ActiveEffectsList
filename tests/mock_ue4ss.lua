@@ -105,6 +105,14 @@ end
 -- "Pas voilés" has the same icon, 30 s, cost 17.
 CHAM = os.getenv("CHAM") == "1"
 if CHAM then effects[#effects + 1] = { icon = "T_chameleon_illusion", dur = 60, start = 115.0 } end
+-- POOL=1: a pool (like Deepscorn Hollow's ichor) at 116 gives three fortify effects and a
+-- chameleon, 20 min, no magicka spent. The magic menu is opened at 118: its active effects page
+-- then lists them (with the archer spell's two fortify effects).
+POOL = os.getenv("POOL") == "1"
+if POOL then
+  for _ = 1, 3 do effects[#effects + 1] = { icon = "T_fortify_restoration", dur = 1200, start = 116 } end
+  effects[#effects + 1] = { icon = "T_chameleon_illusion", dur = 1200, start = 116 }
+end
 if FULL then
   for _ = 1, 5 do effects[#effects + 1] = { icon = "T_bound_armor_conjuration", dur = 120, start = 112 } end
   effects[#effects + 1] = { icon = "T_shield_alteration", dur = 118, start = 120 }
@@ -295,6 +303,17 @@ local function step(sec, pause)
   for _ = 1, math.floor(sec / 0.25) do
     fakeNow = fakeNow + 0.25
     if not pause then gameTime = gameTime + 0.25 end
+    if POOL and not POOL_OPENED and gameTime >= 118 then
+      POOL_OPENED = true
+      local function act(name, icon, mag) return { Name = text(name), Icon = T(icon), Type = 8, Property = mag } end
+      local page = {
+        act("Caméléon", "T_chameleon_illusion", 100), act("Vision nocturne", "T_night_eye_illusion", 0),
+        act("Renfort : Agilité", "T_fortify_restoration", 100), act("Renfort : Archerie", "T_fortify_restoration", 30),
+        act("Renfort de Magie", "T_fortify_magicka_ultiplier_restoration", 100),
+        act("Renfort : Force", "T_fortify_restoration", 20), act("Renfort : Endurance", "T_fortify_restoration", 20),
+        act("Renfort : Vitesse", "T_fortify_restoration", 20) }
+      mm.Inventory = arr(page)
+    end
     if HOVERED and HOVER_HOOK then HOVER_HOOK(nil, { get = function() return HOVERED end }) end
     loopFn()
     if ORDER_TRACE then ORDER_TRACE() end

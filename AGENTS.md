@@ -59,6 +59,7 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        CHAM=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok     # duration estimate creeping after a menu
        RELOAD=1 LOADSAVE=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # loading an older save
        GLITCH=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok   # HUD list empty for one update
+       POOL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok     # pool effects named from the active page
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -110,6 +111,12 @@ Do not install or reinstall something risky while the user is playing without te
   `T_fortify_restoration`), so names are matched by icon, using the common prefix when an icon is
   ambiguous ("Renfort"). French text uses a no-break space before ":".
   Filled when the player opens the magic menu.
+  Effects that are not casts (potions, shrines, the ichor pool of Deepscorn Hollow: three
+  fortify effects + chameleon, 20 min) get the page's names for their icon, minus the names
+  claimed by labeled effects ("Renfort : Volonté" for "Renfort : Volonté 100 (Nerver Give Up)"),
+  with the page's magnitude. Only when the page changed after they appeared, the counts agree,
+  and same-icon effects started together (so the order of names does not matter). Otherwise
+  the common prefix ("Renfort").
 - **Spell book (`spellbook.txt` next to the Scripts folder, written by the mod):** when a spell is
   hovered in the magic menu, the game fills `VAddedEffectsListViewModel.ModernAddedItemEffectsList`
   (`FModernEffectItemData`: `EffectName`, `AdditionalEffectName`, `Magnitude`, `Duration` in

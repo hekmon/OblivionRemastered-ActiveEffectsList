@@ -1634,12 +1634,16 @@ end
 ----------------------------------------------------------------------------------------------------
 
 local iconNames = {} -- icon texture name -> { [name] = true }
+-- The page as last seen: { items = { { icon, name, magnitude } }, at = when it last changed }.
+-- It is only refilled when the player opens the magic menu.
+local activePage = { items = {}, sig = nil, at = -1000 }
 
 local function RefreshIconNames()
     local all = FindAllOf("VMagicMenuViewModel")
     if not all then return end
     for _, mm in ipairs(all) do
         if Valid(mm) and not IsTemplate(mm) then
+            local items, parts = {}, {}
             for _, it in ipairs(ReadArray(mm.Inventory)) do
                 pcall(function() RememberTexture(it.Icon) end)
                 local okT, typ = pcall(function() return it.Type end)
@@ -1650,12 +1654,68 @@ local function RefreshIconNames()
                         -- An icon keeps every name ever seen for it.
                         iconNames[icon] = iconNames[icon] or {}
                         iconNames[icon][name] = true
+                        local okP, mag = pcall(function() return tonumber(it.Property) end)
+                        items[#items + 1] = { icon = icon, name = name, magnitude = okP and mag or nil }
+                        parts[#parts + 1] = icon .. "=" .. name .. "=" .. tostring(okP and mag or "")
                     end
+                end
+            end
+            local sig = table.concat(parts, ";")
+            if sig ~= activePage.sig then
+                activePage.items, activePage.sig, activePage.at = items, sig, Now()
+                if #items > 0 then
+                    Debug("active effects page: %s", table.concat(parts, ", "))
                 end
             end
             return
         end
     end
+end
+
+-- Names for effects that are not from a recognized cast (potions, shrines, pools...), from the
+-- active effects page: for each icon, the page's names not already accounted for by labeled
+-- effects. Only used when the page was seen after those effects appeared and the counts agree;
+-- several unnamed effects of one icon must also have started together (same fraction), so it
+-- does not matter which name goes on which line.
+local function PageLabels(tracked)
+    local out = {}
+    local byIcon = {}
+    for _, t in ipairs(tracked) do
+        local g = byIcon[t.iconName] or { labeled = {}, unnamed = {} }
+        byIcon[t.iconName] = g
+        if t.effectLabel then g.labeled[#g.labeled + 1] = t else g.unnamed[#g.unnamed + 1] = t end
+    end
+    for icon, g in pairs(byIcon) do
+        if #g.unnamed > 0 then
+            local fresh, together = true, true
+            for _, t in ipairs(g.unnamed) do
+                if not t.born or t.born > activePage.at then fresh = false end
+                if math.abs(t.f - g.unnamed[1].f) > 0.005 then together = false end
+            end
+            local names = {}
+            for _, it in ipairs(activePage.items) do
+                if it.icon == icon then names[#names + 1] = it end
+            end
+            for _, t in ipairs(g.labeled) do
+                for k, it in ipairs(names) do
+                    if t.effectLabel:sub(1, #it.name) == it.name then table.remove(names, k); break end
+                end
+            end
+            if fresh and together and #names == #g.unnamed then
+                table.sort(names, function(a, b) return a.name < b.name end)
+                table.sort(g.unnamed, function(a, b) return (a.uid or 0) < (b.uid or 0) end)
+                for k, t in ipairs(g.unnamed) do
+                    local it = names[k]
+                    local label = it.name
+                    if config.ShowMagnitude and it.magnitude and it.magnitude >= 1 then
+                        label = string.format("%s %d", label, Round(it.magnitude))
+                    end
+                    out[t] = label
+                end
+            end
+        end
+    end
+    return out
 end
 
 local function CommonPrefix(list)
@@ -1833,8 +1893,10 @@ OrderRows = function(rows)
     return out
 end
 
+local pageLabels = {}
+
 local function RowLabel(t)
-    local effect = t.effectLabel or NameForIcon(t.iconName)
+    local effect = t.effectLabel or pageLabels[t] or NameForIcon(t.iconName)
     if t.spell then return string.format("%s (%s)", effect, t.spell) end
     return effect
 end
@@ -1869,6 +1931,7 @@ local function BuildRows(tracked, named)
             rows[#rows + 1] = { icon = icon, label = NamedLabel(e), seconds = e.remaining, fraction = fraction, order = i, group = "n" .. i }
         end
     else
+        pageLabels = PageLabels(tracked)
         for i, t in ipairs(tracked) do
             if t.castGroup and supersededGroups[t.castGroup] then goto continue end
             rows[#rows + 1] = {

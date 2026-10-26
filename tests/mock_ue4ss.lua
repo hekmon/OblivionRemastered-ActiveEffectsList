@@ -400,6 +400,8 @@ if os.getenv("RELOAD") == "1" then
   end })
   mainWidget.HUDMainViewModel = vm2
   registry.VHUDMainViewModel = { vm, vm2 }
+  -- TELEPORT=1: 20 s of game time pass during the loading screen (a teleport, fast travel).
+  if os.getenv("TELEPORT") == "1" then gameTime = gameTime + 20 end
   -- LOADSAVE=1: the loading screen loads an older save: effects are 10 s less far along, and
   -- magicka is 57 lower, without any cast.
   if os.getenv("LOADSAVE") == "1" then

@@ -632,33 +632,10 @@ local function UpdateTracker(hud, running)
     local dt = tracker.lastReal and math.max(0, now - tracker.lastReal) or 0
     tracker.lastReal = now
 
-    -- Advance the clock only while fractions move (they freeze when the game is paused).
     local parts = {}
     for _, h in ipairs(hud) do parts[#parts + 1] = string.format("%.5f", h.f) end
     local sig = table.concat(parts, ";")
     tracker.pending = tracker.pending + dt
-    if #hud == 0 then
-        -- No effect on the HUD: nothing to watch, follow real time while the game runs (rebuilt
-        -- effects keep counting down).
-        if running then tracker.activeClock = tracker.activeClock + math.min(dt, 1.0) end
-        tracker.pending = 0
-        tracker.lastFractions = ""
-    elseif sig ~= tracker.lastFractions then
-        if tracker.lastChange then
-            local gap = now - tracker.lastChange
-            if gap > tracker.maxGap then tracker.maxGap = gap end
-            if gap > 2.0 then tracker.longGaps = tracker.longGaps + 1 end
-        end
-        tracker.lastChange = now
-        tracker.changes = tracker.changes + 1
-        -- After a long freeze (pause), only the last update interval was game time.
-        local credit = tracker.pending
-        if credit > 2.0 then credit = math.min(dt, config.UpdateIntervalMs / 1000) end
-        tracker.activeClock = tracker.activeClock + credit
-        tracker.pending = 0
-        tracker.lastFractions = sig
-    end
-    local clock = tracker.activeClock
 
     -- Match the new list against the previous one. The HUD keeps cast order: expired effects are
     -- removed and new ones appended, so a forward scan is enough. A recast (fraction going back
@@ -692,12 +669,66 @@ local function UpdateTracker(hud, running)
                 break
             end
         end
-        local e = matched or Resurrect(h)
+        local e = matched
+        if e then
+            e.prevF = e.f
+        else
+            -- Back from a ghost: not a time reference (its time was counted while it was gone).
+            e = Resurrect(h)
+            if e then e.prevF = nil end
+        end
         if not e then
             tracker.uidCounter = (tracker.uidCounter or 0) + 1
-            e = { iconName = h.iconName, f0 = h.f, t0 = clock, born = now, uid = tracker.uidCounter }
+            e = { iconName = h.iconName, f0 = h.f, born = now, uid = tracker.uidCounter, isNew = true }
         end
         e.icon, e.f = h.icon, h.f
+        new[#new + 1] = e
+    end
+
+    -- Advance the clock only while fractions move (they freeze when the game is paused).
+    if #hud == 0 then
+        -- No effect on the HUD: nothing to watch, follow real time while the game runs (rebuilt
+        -- effects keep counting down).
+        if running then tracker.activeClock = tracker.activeClock + math.min(dt, 1.0) end
+        tracker.pending = 0
+        tracker.lastFractions = ""
+    elseif sig ~= tracker.lastFractions then
+        if tracker.lastChange then
+            local gap = now - tracker.lastChange
+            if gap > tracker.maxGap then tracker.maxGap = gap end
+            if gap > 2.0 then tracker.longGaps = tracker.longGaps + 1 end
+        end
+        tracker.lastChange = now
+        tracker.changes = tracker.changes + 1
+        -- An effect whose duration is known (recognized cast) or settled measures the game time
+        -- that passed: fraction used x duration. That holds across pauses and across loading
+        -- screens where game time passes (a teleport took 20 % of a 20 min effect at once).
+        local ref, refDuration, refKnown
+        for _, e in ipairs(new) do
+            local d = e.knownDuration or (e.durSettled and e.duration)
+            if d and e.prevF and e.prevF > e.f then
+                local known = e.knownDuration ~= nil
+                if not ref or (known and not refKnown) or (known == refKnown and d > refDuration) then
+                    ref, refDuration, refKnown = e, d, known
+                end
+            end
+        end
+        local credit
+        if ref then
+            credit = (ref.prevF - ref.f) * refDuration
+        else
+            -- After a long freeze (pause), only the last update interval was game time.
+            credit = tracker.pending
+            if credit > 2.0 then credit = math.min(dt, config.UpdateIntervalMs / 1000) end
+        end
+        tracker.activeClock = tracker.activeClock + credit
+        tracker.pending = 0
+        tracker.lastFractions = sig
+    end
+    local clock = tracker.activeClock
+
+    for _, e in ipairs(new) do
+        if e.isNew then e.isNew, e.t0 = nil, clock end
         local used = e.f0 - e.f
         local elapsed = clock - e.t0
         if e.knownDuration then
@@ -714,7 +745,6 @@ local function UpdateTracker(hud, running)
                 e.durRef, e.durRefAt, e.durSettled = d, clock, false
             end
         end
-        new[#new + 1] = e
     end
     -- Entries gone with time still left: removed by the game (dispel, cure...), not expired.
     -- Decided once they have been gone for a second (see ghosts above).

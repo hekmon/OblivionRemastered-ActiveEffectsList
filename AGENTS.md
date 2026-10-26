@@ -60,6 +60,7 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        RELOAD=1 LOADSAVE=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # loading an older save
        GLITCH=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok   # HUD list empty for one update
        POOL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok     # pool effects named from the active page
+       RELOAD=1 TELEPORT=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # game time passing during a loading screen
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -106,6 +107,12 @@ Do not install or reinstall something risky while the user is playing without te
   - Fractions freeze while the game is paused (menus).
   - Seconds are estimated as `fraction * duration`, with `duration = active time / fraction used`.
     The estimate matches `GameplayStatics:GetTimeSeconds`.
+  - The mod's clock ("active time") is advanced by an effect whose duration is known (recognized
+    cast) or settled: fraction used x duration. Only without one does it fall back to real time
+    while fractions move. Game time can pass during a loading screen: a teleport took 20 % of a
+    1200 s effect at once (0.89 -> 0.69); the old clock credited 0.25 s, the estimate fell to
+    312 s, and the shown time then went *up* as it recovered. Entries back from a ghost are not
+    references (their time was already counted while the HUD list was empty).
 - **`VMagicMenuViewModel.Inventory`**: items with `Type == 8` are the Active Effects page. It has
   `Name`, `Icon`, `Property` (= summed magnitude), but **no duration**, and it merges effects of
   the same type. Many effects share an icon (all fortify attribute/skill effects use

@@ -1222,11 +1222,15 @@ local function DropRecord(rec, present)
     end
 end
 
+-- When effects of each spell last left the HUD before their end (spell name -> time).
+local lastRemovedAt = {}
+
 local function ProcessRemovals(removed, present)
     if #removed == 0 then return end
     if not inGame.active or Now() - inGame.since < 3 then return end
     local labels, groups, groupCount = {}, {}, 0
     for _, e in ipairs(removed) do
+        if e.spell then lastRemovedAt[e.spell] = Now() end
         labels[#labels + 1] = e.effectLabel or e.iconName
         local g = e.castGroup or ("effect" .. tostring(e.uid))
         -- Effects replaced by a recast of their spell do not count toward a dispel (two quick
@@ -1455,6 +1459,32 @@ local function AttributeCasts(tracked, vm)
                 if CostMatches(spellbook.spells[n], d.amount, true) == true then byCost[#byCost + 1] = n end
             end
             if #byCost > 0 then cands = byCost end
+            -- Several costs fit (seen: 276 spent, Magic Well 276, Masse enchantée 281, Nerver Give
+            -- Up 281): the closest cost wins; on a tie, a spell whose effects just left the HUD
+            -- (a recast replaces them).
+            if #cands > 1 then
+                local best
+                for _, n in ipairs(cands) do
+                    local c = spellbook.spells[n].cost
+                    if c and (not best or math.abs(c - d.amount) < best) then best = math.abs(c - d.amount) end
+                end
+                if best then
+                    local closest = {}
+                    for _, n in ipairs(cands) do
+                        local c = spellbook.spells[n].cost
+                        if c and math.abs(c - d.amount) <= best + 0.5 then closest[#closest + 1] = n end
+                    end
+                    cands = closest
+                end
+            end
+            if #cands > 1 then
+                local recast = {}
+                for _, n in ipairs(cands) do
+                    local t = lastRemovedAt[n]
+                    if t and math.abs(t - d.at) <= 4 then recast[#recast + 1] = n end
+                end
+                if #recast == 1 then cands = recast end
+            end
             if #cands == 1 then
                 NewRecord(cands[1], d.clock, true)
                 Debug("cast: hidden cast of '%s' (HUD %d/%d, %.0f magicka spent)", cands[1], d.hudCount, config.HudLimit, d.amount)

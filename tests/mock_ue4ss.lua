@@ -208,6 +208,8 @@ local INV = {
     { Name = text("Caméléon"), Icon = T("T_chameleon_illusion"), Type = 4, InventoryIndex = 23, Property = 239 },
     { Name = text("Pas voilés"), Icon = T("T_chameleon_illusion"), Type = 4, InventoryIndex = 24, Property = 17 },
     { Name = text("Dissipation suprême"), Icon = T("T_dispel_mysticism"), Type = 4, InventoryIndex = 25, Property = 42 },
+    -- DECOY=1 (with STUCK=1): a fortify spell costing 41, within 2 % of the Volonté spell's 40
+    { Name = text("Renfort leurre"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 26, Property = 41 },
 }
 if POOL then
   -- permanent effects (enchanted gear, abilities) on the active effects page
@@ -243,13 +245,14 @@ local SPELL_EFFECTS = {
   [3093] = { eff("Caméléon", "", 100, 60, "T_chameleon_illusion", 0) },
   [3094] = { eff("Caméléon", "", 15, 30, "T_chameleon_illusion", 0) },
   [3095] = { eff("Dissipation", "", 150, -1, "T_dispel_mysticism", 0) },
+  [3096] = { eff("Renfort : {0}", "Chance", 20, 30, "T_fortify_restoration", 0) },
 }
 local added = obj("VAddedEffectsListViewModel", "AddedVM")
 local SPELL_NAMES = { [3007] = "Nerver Give Up", [3049] = "Puissance de l'archer", [3050] = "Puissance du mage",
   [3060] = "Daedric Armor", [3061] = "Bouclier lié", [3070] = "Champ de Force", [3071] = "Égide",
   [3080] = "Magic Well", [3081] = "Renfort de Volonté supérieur",
   [3090] = "Arc enchanté", [3091] = "Masse enchantée", [3092] = "Épée liée",
-  [3093] = "Caméléon", [3094] = "Pas voilés", [3095] = "Dissipation suprême" }
+  [3093] = "Caméléon", [3094] = "Pas voilés", [3095] = "Dissipation suprême", [3096] = "Renfort leurre" }
 -- As in the game: the panel instance is named after the menu's variable ("magic_details"), and the
 -- title is a WBP_AltarTextBlock user widget wrapping a VAltarTextBlock named text_block.
 local title = obj("VAltarTextBlock", "text_block", nil,
@@ -371,6 +374,7 @@ if FULL or PARTIAL or STUCK then for _, id in ipairs({ 3060, 3061, 3070, 3071, 3
 if BOW then for _, id in ipairs({ 3090, 3091, 3092 }) do hoverSpell(id); step(1, true) end end
 if CHAM then for _, id in ipairs({ 3093, 3094 }) do hoverSpell(id); step(1, true) end end
 if os.getenv("SELFDISPEL") == "1" then hoverSpell(3095); step(1, true) end
+if os.getenv("DECOY") == "1" then hoverSpell(3096); step(1, true) end
 HOVERED = nil
 step(9)          -- includes the fortify cast at gameTime 108
 step(10, true)   -- paused (menu open)

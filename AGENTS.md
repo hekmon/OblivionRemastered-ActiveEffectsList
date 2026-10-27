@@ -65,6 +65,7 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        BUMP=1 FULL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok   # full list pushing older effects out
        PAGESTUCK=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # page read with rebuilt effects
        REORDER=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # game reorders its list
+       DECOY=1 RECAST=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # hidden casts with near-equal costs
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -177,7 +178,9 @@ Do not install or reinstall something risky while the user is playing without te
   to 3-5 visible effects while hidden ones never resurfaced, and new casts stayed hidden. So a cast
   that is entirely hidden (magicka drop, nothing new on the HUD) is checked for every drop, not
   only when 8 are shown. It is identified from the HUD's equipped `SpellIcon` plus the magicka
-  spent.
+  spent. Several costs can fit the strict tolerance (seen: 276 spent with Magic Well 276,
+  Masse enchantée 281, Nerver Give Up 281; then 281 spent, tied): the closest cost wins, and on
+  a tie the spell whose effects left the HUD within 4 s (a recast replaces them).
 - **Recasts:** casting a spell again replaces its previous cast (same-spell effects do not stack in
   Oblivion; the duration restarts). A new cast record removes older records of the same spell,
   and HUD entries of replaced casts are hidden. Otherwise a recast whose effects the game hides

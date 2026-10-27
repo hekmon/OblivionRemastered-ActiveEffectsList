@@ -137,6 +137,12 @@ local function hudArrays()
       if f > 0 and (#ic < HUD_CAP or BUMP_NOW) and not e.hidden then ic[#ic + 1] = T(e.icon); tl[#tl + 1] = f end
     end
   end
+  -- REORDER=1: from 135 the game lists the effects in reverse order (seen after an overflow).
+  if os.getenv("REORDER") == "1" and gameTime >= 135 then
+    local ric, rtl = {}, {}
+    for i = #ic, 1, -1 do ric[#ric + 1] = ic[i]; rtl[#rtl + 1] = tl[i] end
+    ic, tl = ric, rtl
+  end
   -- BUMP=1 (with FULL=1): from 130 the full list shows the newest effects, pushing older ones out.
   if BUMP_NOW then
     while #ic > HUD_CAP do table.remove(ic, 1); table.remove(tl, 1) end

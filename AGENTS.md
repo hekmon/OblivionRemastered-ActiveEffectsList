@@ -64,6 +64,7 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        SELFDISPEL=1 STUCK=1 HUD_CAP=0 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # dispel cast, HUD list empty
        BUMP=1 FULL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok   # full list pushing older effects out
        PAGESTUCK=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # page read with rebuilt effects
+       REORDER=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # game reorders its list
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -103,8 +104,12 @@ Do not install or reinstall something risky while the user is playing without te
 
 ### Data sources
 - **`VHUDMainViewModel`** (`FindAllOf`, skip templates):
-  - `EffectsIcons`: `TArray<UTexture2D*>`, one per timed effect, in cast order (expired ones are
-    removed, new ones appended).
+  - `EffectsIcons`: `TArray<UTexture2D*>`, one per timed effect, usually in cast order (expired
+    ones removed, new ones appended). **Not always**: after an overflow the game reordered it
+    (8 -> 6 items, order changed). The old forward scan then lost entries, saw a false dispel,
+    dropped rebuilt Daedric Armor pieces, and re-born effects got wrong names. Entries are now
+    matched per icon regardless of order: first the earliest unused entry whose fraction
+    continues smoothly (0 to 0.03 lower), else the closest higher one (a loading-screen jump).
   - `EffectsTimeLeft`: `TArray<double>` holding the **fraction** of the duration left (1.0 down to 0.0),
     not seconds. The array is not trimmed, so only the first `#EffectsIcons` entries are valid.
   - Fractions freeze while the game is paused (menus).

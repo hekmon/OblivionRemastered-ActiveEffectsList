@@ -637,13 +637,10 @@ local function UpdateTracker(hud, running)
     local sig = table.concat(parts, ";")
     tracker.pending = tracker.pending + dt
 
-    -- Match the new list against the previous one. The HUD keeps cast order: expired effects are
-    -- removed and new ones appended, so a forward scan is enough. A recast (fraction going back
-    -- up) counts as a new effect.
+    -- Match the new list against the previous one (see below).
     local old = tracker.entries
     local new = {}
     local kept = {}
-    local j = 1
     -- Entries missing from the HUD for less than a second ("ghosts"): the game's list can drop
     -- effects for an update (seen while recasting quickly) and give them back unchanged.
     tracker.ghosts = tracker.ghosts or {}
@@ -658,17 +655,32 @@ local function UpdateTracker(hud, running)
         if not best then return nil end
         return table.remove(tracker.ghosts, best).e
     end
-    for _, h in ipairs(hud) do
-        local matched = nil
-        for k = j, #old do
-            local o = old[k]
-            if o.iconName == h.iconName and h.f <= o.f + 0.01 then
-                matched = o
-                kept[o] = true
-                j = k + 1
-                break
+    -- The list is not always in cast order (after overflowing, the game reordered it: effects
+    -- were lost, a false dispel dropped rebuilt armor pieces). So each HUD item takes, among
+    -- unused entries with its icon: 1. the first, in the old order, that continues smoothly
+    -- (same or slightly lower fraction); 2. else the closest above it (a jump: game time passed
+    -- during a loading screen). A fraction going up is a new effect (recast).
+    local matchOf = {}
+    for i, h in ipairs(hud) do
+        for _, o in ipairs(old) do
+            if not kept[o] and o.iconName == h.iconName and h.f <= o.f + 0.01 and o.f - h.f <= 0.03 then
+                matchOf[i] = o; kept[o] = true; break
             end
         end
+    end
+    for i, h in ipairs(hud) do
+        if not matchOf[i] then
+            local best
+            for _, o in ipairs(old) do
+                if not kept[o] and o.iconName == h.iconName and h.f <= o.f + 0.01 and (not best or o.f < best.f) then
+                    best = o
+                end
+            end
+            if best then matchOf[i] = best; kept[best] = true end
+        end
+    end
+    for i, h in ipairs(hud) do
+        local matched = matchOf[i]
         local e = matched
         if e then
             e.prevF = e.f

@@ -752,10 +752,15 @@ local function UpdateTracker(hud, running)
         if not kept[o] then
             local back = false
             for _, e in ipairs(new) do if e == o then back = true end end
-            if not back then tracker.ghosts[#tracker.ghosts + 1] = { e = o, since = now } end
+            -- From a full HUD list, an effect can be pushed out by a new one (it is hidden, not
+            -- removed): seen as false dispels while the list was full.
+            -- A dispel empties the list instead: only a list that stays full counts.
+            local full = #old >= config.HudLimit and #hud >= config.HudLimit
+            if not back then tracker.ghosts[#tracker.ghosts + 1] = { e = o, since = now, full = full } end
         end
     end
     tracker.removedEarly = {}
+    tracker.bumped = {}
     local ghosts = {}
     for _, g in ipairs(tracker.ghosts) do
         if now - g.since < 1.0 then
@@ -763,7 +768,10 @@ local function UpdateTracker(hud, running)
         else
             local o = g.e
             local left = o.duration and (o.f * o.duration) or nil
-            if (left and left > 1.5) or (not left and o.f > 0.05) then
+            if g.full then
+                -- hidden by the game: a recognized cast rebuilds it as a stand-in
+                tracker.bumped[#tracker.bumped + 1] = o
+            elseif (left and left > 1.5) or (not left and o.f > 0.05) then
                 tracker.removedEarly[#tracker.removedEarly + 1] = o
             end
         end
@@ -1209,7 +1217,10 @@ local function ProcessRemovals(removed, present)
     for _, e in ipairs(removed) do
         labels[#labels + 1] = e.effectLabel or e.iconName
         local g = e.castGroup or ("effect" .. tostring(e.uid))
-        if not groups[g] then groups[g] = true; groupCount = groupCount + 1 end
+        -- Effects replaced by a recast of their spell do not count toward a dispel (two quick
+        -- recasts were taken for one).
+        local recast = e.castGroup and supersededGroups[e.castGroup]
+        if not groups[g] and not recast then groups[g] = true; groupCount = groupCount + 1 end
         local rec = e.castGroup and castRecords[e.castGroup]
         if rec then
             for k, slotEntry in pairs(rec.slots) do
@@ -1326,6 +1337,14 @@ local function AttributeCasts(tracked, vm)
     local present = {}
     for _, e in ipairs(tracked) do present[e] = true end
     ProcessRemovals(tracker.removedEarly or {}, present)
+    -- Effects pushed out of a full HUD list: their casts are shown with stand-ins from now on.
+    for _, e in ipairs(tracker.bumped or {}) do
+        local rec = e.castGroup and castRecords[e.castGroup]
+        if rec and not rec.hudFull then
+            rec.hudFull = true
+            Debug("cast: '%s' partly pushed out of the full HUD list, rebuilt", rec.spell)
+        end
+    end
     local hudFull = #tracked >= config.HudLimit
 
     -- Magicka drops (a drop spread over a few updates counts as one).
@@ -1679,6 +1698,24 @@ local function StandInRows(present)
     return rows
 end
 
+-- Effects of recognized casts that are running but not on the HUD (shown as stand-in rows):
+-- { icon = icon name, label = effect label }.
+local function RebuiltEffects(present)
+    local out = {}
+    for _, rec in pairs(castRecords) do
+        local spell = spellbook.spells[rec.spell]
+        if spell and rec.hudFull then
+            local elapsed = tracker.activeClock - rec.start
+            for _, it in ipairs(SelfTimed(spell)) do
+                if it.se.duration - elapsed > 0 and SlotFree(rec, it.k, present) then
+                    out[#out + 1] = { icon = it.se.icon, label = it.se.label }
+                end
+            end
+        end
+    end
+    return out
+end
+
 ----------------------------------------------------------------------------------------------------
 -- Source 2: magic menu "Active" page (safe, refreshed when the menu opens): icon -> names
 ----------------------------------------------------------------------------------------------------
@@ -1729,6 +1766,7 @@ end
 local PERMANENT_FILE = (ModDir() or "") .. "permanent.txt"
 local baseline = {} -- icon -> { [name] = magnitude }; an icon missing = no permanent effect
 local baselineValid = false -- a page has been recorded at least once
+local baselineHist = {} -- icon -> { { at, b = { [name] = magnitude } } }, recent captures
 
 local function LoadBaseline()
     local f = io.open(PERMANENT_FILE, "r")
@@ -1742,6 +1780,11 @@ local function LoadBaseline()
         end
     end
     f:close()
+    for icon, b in pairs(baseline) do
+        local copy = {}
+        for n, m in pairs(b) do copy[n] = m end
+        baselineHist[icon] = { { at = Now(), b = copy } }
+    end
 end
 
 local function SaveBaseline()
@@ -1779,6 +1822,14 @@ local function PageLabels(tracked)
         byIcon[t.iconName] = g
         if t.effectLabel then g.labeled[#g.labeled + 1] = t else g.unnamed[#g.unnamed + 1] = t end
     end
+    -- Rebuilt effects (hidden by the game's HUD) are on the page too.
+    local present = {}
+    for _, t in ipairs(tracked) do present[t] = true end
+    for _, r in ipairs(RebuiltEffects(present)) do
+        local g = byIcon[r.icon] or { labeled = {}, unnamed = {} }
+        byIcon[r.icon] = g
+        g.labeled[#g.labeled + 1] = { effectLabel = r.label }
+    end
     local pageByIcon = {}
     for _, it in ipairs(activePage.items) do
         pageByIcon[it.icon] = pageByIcon[it.icon] or {}
@@ -1795,7 +1846,41 @@ local function PageLabels(tracked)
     end
 
     -- A page just read (not later: effects may have ended since), with no unknown timed effect of
-    -- an icon and nothing hidden by a full HUD: it is that icon's baseline.
+    -- an icon and nothing hidden by a full HUD, is a capture of that icon's permanent effects.
+    -- The baseline is each name's lowest value over the captures of the last 30 minutes: a
+    -- timed effect the game hid from the HUD (it happens) cannot raise it for long, and gear
+    -- taken off lowers it at once.
+    local function Remember(icon, b)
+        local now = Now()
+        baselineHist[icon] = baselineHist[icon] or {}
+        local hist = baselineHist[icon]
+        hist[#hist + 1] = { at = now, b = b }
+        while #hist > 1 and now - hist[1].at > 1800 do table.remove(hist, 1) end
+        -- b[name] = false: unknown in that capture (a cast adds to it), it does not count.
+        local old = baseline[icon] or {}
+        local names = {}
+        for _, c in ipairs(hist) do for n in pairs(c.b) do names[n] = true end end
+        for n in pairs(old) do names[n] = true end
+        local min = {}
+        for n in pairs(names) do
+            local low, seen = nil, false
+            for _, c in ipairs(hist) do
+                local v = c.b[n]
+                if v ~= false then
+                    seen = true
+                    v = v or 0
+                    if not low or v < low then low = v end
+                end
+            end
+            if not seen then low = old[n] end
+            if low and low >= 1 then min[n] = low end
+        end
+        local changed = false
+        for n, m in pairs(min) do if old[n] ~= m then changed = true end end
+        for n in pairs(old) do if min[n] == nil then changed = true end end
+        baseline[icon] = next(min) and min or nil
+        return changed
+    end
     local hudFull = #tracked >= config.HudLimit
     local justRead = activePage.fresh
     activePage.fresh = false
@@ -1807,26 +1892,25 @@ local function PageLabels(tracked)
             local known = #g.unnamed == 0
             for _, v in pairs(add) do if v == false then known = false end end
             if known then
-                -- Names that recognized casts also add to are kept as they were: the real
+                -- Names that recognized casts also add to are unknown in this capture: the real
                 -- magnitude can differ from the book's (spell effectiveness, e.g. 95 %).
-                local old = baseline[icon] or {}
                 local b = {}
                 for _, it in ipairs(items) do
                     if add[it.name] then
-                        b[it.name] = old[it.name]
+                        b[it.name] = false
                     elseif (it.magnitude or 0) >= 1 then
                         b[it.name] = it.magnitude
                     end
                 end
-                for n, m in pairs(b) do if old[n] ~= m then changed = true end end
-                for n in pairs(old) do if b[n] == nil then changed = true end end
-                baseline[icon] = b
+                if Remember(icon, b) then changed = true end
             end
         end
         -- Icons no longer on the page (gear taken off): no permanent effect left.
         for icon in pairs(baseline) do
             local g = byIcon[icon]
-            if not pageByIcon[icon] and not (g and #g.unnamed > 0) then baseline[icon] = nil; changed = true end
+            if not pageByIcon[icon] and not (g and (#g.unnamed > 0 or #g.labeled > 0)) then
+                if Remember(icon, {}) then changed = true end
+            end
         end
         if changed or not baselineValid then
             baselineValid = true

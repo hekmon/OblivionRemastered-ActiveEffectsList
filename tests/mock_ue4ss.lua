@@ -122,6 +122,7 @@ local paused = false
 local function hudArrays()
   local ic, tl = {}, {}
   local gameTime = gameTime
+  BUMP_NOW = os.getenv("BUMP") == "1" and gameTime >= 130
   -- GLITCH=1: for one update the game's list is empty, then everything is back unchanged.
   if os.getenv("GLITCH") == "1" and math.abs(gameTime - 125) < 0.01 then return ic, tl end
   if CHAM and gameTime >= 115.5 and gameTime < 118.5 then gameTime = 115.5 end
@@ -133,8 +134,12 @@ local function hudArrays()
       or (e.stop and gameTime >= e.stop)
     if gameTime >= e.start and not dispelled then
       local f = 1 - (gameTime - e.start) / e.dur
-      if f > 0 and #ic < HUD_CAP and not e.hidden then ic[#ic + 1] = T(e.icon); tl[#tl + 1] = f end
+      if f > 0 and (#ic < HUD_CAP or BUMP_NOW) and not e.hidden then ic[#ic + 1] = T(e.icon); tl[#tl + 1] = f end
     end
+  end
+  -- BUMP=1 (with FULL=1): from 130 the full list shows the newest effects, pushing older ones out.
+  if BUMP_NOW then
+    while #ic > HUD_CAP do table.remove(ic, 1); table.remove(tl, 1) end
   end
   return ic, tl
 end
@@ -317,6 +322,17 @@ local function step(sec, pause)
   for _ = 1, math.floor(sec / 0.25) do
     fakeNow = fakeNow + 0.25
     if not pause then gameTime = gameTime + 0.25 end
+    -- PAGESTUCK=1 (with STUCK=1 HUD_CAP=3): the menu is opened at 128 while the hidden Volonté
+    -- cast and two of the archer spell's effects are rebuilt: none of them is permanent.
+    if os.getenv("PAGESTUCK") == "1" and not PAGE_OPENED and gameTime >= 128 then
+      PAGE_OPENED = true
+      local function act(name, icon, mag) return { Name = text(name), Icon = T(icon), Type = 8, Property = mag } end
+      mm.Inventory = arr({
+        act("Caméléon", "T_chameleon_illusion", 100), act("Vision nocturne", "T_night_eye_illusion", 0),
+        act("Renfort : Agilité", "T_fortify_restoration", 100), act("Renfort : Archerie", "T_fortify_restoration", 30),
+        act("Renfort : Volonté", "T_fortify_restoration", 10), act("Renfort : Chance", "T_fortify_restoration", 10),
+        act("Renfort de Magie", "T_fortify_magicka_ultiplier_restoration", 100) })
+    end
     if POOL and not POOL_OPENED and gameTime >= 118 then
       POOL_OPENED = true
       local function act(name, icon, mag) return { Name = text(name), Icon = T(icon), Type = 8, Property = mag } end

@@ -62,6 +62,8 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        POOL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok     # pool effects named from the active page
        RELOAD=1 TELEPORT=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # game time passing during a loading screen
        SELFDISPEL=1 STUCK=1 HUD_CAP=0 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # dispel cast, HUD list empty
+       BUMP=1 FULL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok   # full list pushing older effects out
+       PAGESTUCK=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # page read with rebuilt effects
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -126,10 +128,14 @@ Do not install or reinstall something risky while the user is playing without te
   basin) and "Renfort : Discrétion 27" (7 + 20). The menu's list is **emptied when the menu
   closes**: keep the last non-empty page.
   Effects that are not casts are named from the page minus a baseline of permanent effects
-  (`permanent.txt` next to the Scripts folder, name -> magnitude per icon). The baseline is
-  recorded only at the moment a page is read, for icons with no unnamed timed effect, HUD not
-  full, minus the recognized casts' magnitudes (names a cast adds to keep their old value:
-  spell effectiveness, e.g. 95 %, makes real magnitudes differ). Names are given only when the
+  (`permanent.txt` next to the Scripts folder, name -> magnitude per icon). A capture is taken
+  only at the moment a page is read, for icons with no unnamed timed effect, HUD not full.
+  Names that recognized casts add to, **rebuilt effects included** (hidden by the HUD, still on
+  the page), are unknown in that capture (spell effectiveness, e.g. 95 %, makes real magnitudes
+  differ from the book's). The baseline is each name's **minimum over the captures of the last
+  30 minutes** (a name missing from a capture counts as 0): a timed effect the HUD hid cannot
+  raise it for long. Before this, captures taken while Magic Well and Caméléon were rebuilt
+  recorded "Renfort de Magie 100" and "Caméléon 100" as permanent. Names are given only when the
   page changed after the effects appeared, the increases' count equals the unnamed effects'
   count, and same-icon effects started together. Without a recorded page: no names (a version
   that subtracted names instead of magnitudes showed wrong ones, e.g. "Renfort : Chance 10").
@@ -176,12 +182,18 @@ Do not install or reinstall something risky while the user is playing without te
   and matched to another spell). An entry missing from the HUD stays a "ghost" for 1 s: if an
   item with its icon and fraction comes back, it is the same entry. Removals are decided after
   that second.
+- **A full HUD list pushes effects out**: when a new effect arrives, an older visible one can
+  leave the list while it keeps running (seen in game as false dispels; in the mock, a bow cast
+  pushed out two bound armor pieces, which disappeared from the display). An entry that
+  vanishes while the list was full and stays full is "bumped", not removed: its cast is marked
+  `hudFull` so its effects show as stand-ins. A dispel empties the list instead.
 - When the HUD list is empty, the clock follows real time; that update must not also be
   credited again on the next one (it was, making estimates drift by ~1 %).
 - **Removed effects (dispel, cure, recast):** an entry that leaves the HUD with more than 1.5 s
   left was removed, not expired; its slot is never rebuilt. If all the visible effects of a cast
   are removed, the whole cast is dropped (its rebuilt effects too). If effects of two or more
-  casts go at once, it is a dispel: every rebuilt effect is dropped (seen in game: after
+  casts go at once, it is a dispel: every rebuilt effect is dropped (effects replaced by a recast
+  of their spell do not count: two quick recasts were taken for a dispel) (seen in game: after
   "Dissipation suprême" the rebuilt Daedric Armor pieces stayed, frozen). Removals within 3 s of
   a loading screen are ignored.
   The HUD list can also show **nothing at all** while effects run (seen: "HUD effects (0)" with

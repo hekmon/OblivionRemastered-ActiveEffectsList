@@ -1339,7 +1339,9 @@ local function MatchLeftover(e, present)
     for _ in pairs(spells) do count = count + 1 end
     if count ~= 1 then return end
     local f = fits[1]
-    local rec = NewRecord(f.name, tracker.activeClock - (1 - e.f) * f.it.se.duration, false)
+    -- With the HUD full, the spell's other effects may be hidden: rebuild them.
+    local hudFull = #tracker.entries >= config.HudLimit
+    local rec = NewRecord(f.name, tracker.activeClock - (1 - e.f) * f.it.se.duration, hudFull)
     Attach(e, rec, f.it.k, f.it.se)
     -- Several effects of that spell share the icon (e.g. bound armor pieces): the piece is unknown.
     if #fits > 1 then e.effectLabel = nil end
@@ -1401,6 +1403,11 @@ local function AttributeCasts(tracked, vm)
                 -- attached to an earlier cast
             elseif cast.reloadAt and e.born - cast.reloadAt < 3 and e.born >= cast.reloadAt then
                 e.spell = false -- already active when the level loaded
+            elseif e.f0 < 0.9 then
+                -- First seen well into its timer: an effect the full HUD hid, surfacing now, not a
+                -- new cast (seen: a bound armor piece at 53 % took the magicka of "Oeil de la
+                -- nuit", cast at that moment).
+                e.spell = false
             elseif now - GroupBorn(e) > 8 then
                 e.spell = false
             else

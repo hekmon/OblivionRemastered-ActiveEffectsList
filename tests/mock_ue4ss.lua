@@ -113,9 +113,23 @@ if POOL then
   for _ = 1, 3 do effects[#effects + 1] = { icon = "T_fortify_restoration", dur = 1200, start = 116 } end
   effects[#effects + 1] = { icon = "T_chameleon_illusion", dur = 1200, start = 116 }
 end
+-- EXPLORE=1 (with FULL=1): "Oeil de la nuit" (night eye + detect life, 120 s, cost 108) cast at
+-- 125 while the list is full. At that moment a hidden armor piece surfaces (one more slot); the
+-- night eye shows 2 s later, the detect life stays hidden.
+EXPLORE = os.getenv("EXPLORE") == "1"
+if EXPLORE then
+  table.insert(effects, 3, { icon = "T_night_eye_illusion", dur = 120, start = 125, showAt = 127 })
+end
 if FULL then
   for _ = 1, 5 do effects[#effects + 1] = { icon = "T_bound_armor_conjuration", dur = 120, start = 112 } end
   effects[#effects + 1] = { icon = "T_shield_alteration", dur = 118, start = 120 }
+end
+if EXPLORE then
+  effects[#effects + 1] = { icon = "T_detect_life_mysticism", dur = 120, start = 125, hidden = true }
+  -- the surfacing armor piece (53 % left) does not match its cast's timer (in game it did not join)
+  for i = #effects, 1, -1 do
+    if effects[i].icon == "T_bound_armor_conjuration" then effects[i - 1].start = 70; break end
+  end
 end
 local gameTime = 100.0
 local paused = false
@@ -134,7 +148,8 @@ local function hudArrays()
       or (e.stop and gameTime >= e.stop)
     if gameTime >= e.start and not dispelled then
       local f = 1 - (gameTime - e.start) / e.dur
-      if f > 0 and (#ic < HUD_CAP or BUMP_NOW) and not e.hidden then ic[#ic + 1] = T(e.icon); tl[#tl + 1] = f end
+      local cap = HUD_CAP + ((EXPLORE and gameTime >= 125) and 1 or 0)
+      if f > 0 and (#ic < cap or BUMP_NOW) and not e.hidden and not (e.showAt and gameTime < e.showAt) then ic[#ic + 1] = T(e.icon); tl[#tl + 1] = f end
     end
   end
   -- REORDER=1: from 135 the game lists the effects in reverse order (seen after an overflow).
@@ -168,6 +183,7 @@ local mt = { __index = function(t, k)
     if STUCK and os.getenv("RECAST") == "1" and gameTime >= 135 then m = m - 40 end -- same spell again
     if BOW and gameTime >= 115.3 then m = m - 284 end
     if os.getenv("SELFDISPEL") == "1" and gameTime >= 140 then m = m - 42 end
+    if EXPLORE and gameTime >= 125 then m = m - 108 end
     if CHAM and gameTime >= 115 then m = m - 239 end
     if FULL and gameTime >= 112 then m = m - 121 end
     if FULL and gameTime >= 120 then m = m - 85 end
@@ -175,6 +191,7 @@ local mt = { __index = function(t, k)
   elseif k == "SpellIcon" then
     if CHAM and gameTime >= 114 then return T("T_chameleon_illusion") end
     if os.getenv("SELFDISPEL") == "1" and gameTime >= 139 then return T("T_dispel_mysticism") end
+    if EXPLORE and gameTime >= 124 then return T("T_detect_life_mysticism") end
     if PARTIAL and gameTime >= 115 then return T("T_fortify_restoration") end
     if PARTIAL and gameTime >= 111 then return T("T_bound_armor_conjuration") end
     if FULL and gameTime >= 119 then return T("T_shield_alteration") end
@@ -210,6 +227,7 @@ local INV = {
     { Name = text("Dissipation suprême"), Icon = T("T_dispel_mysticism"), Type = 4, InventoryIndex = 25, Property = 42 },
     -- DECOY=1 (with STUCK=1): a fortify spell costing 41, within 2 % of the Volonté spell's 40
     { Name = text("Renfort leurre"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 26, Property = 41 },
+    { Name = text("Oeil de la nuit"), Icon = T("T_detect_life_mysticism"), Type = 4, InventoryIndex = 27, Property = 108 },
 }
 if POOL then
   -- permanent effects (enchanted gear, abilities) on the active effects page
@@ -246,13 +264,14 @@ local SPELL_EFFECTS = {
   [3094] = { eff("Caméléon", "", 15, 30, "T_chameleon_illusion", 0) },
   [3095] = { eff("Dissipation", "", 150, -1, "T_dispel_mysticism", 0) },
   [3096] = { eff("Renfort : {0}", "Chance", 20, 30, "T_fortify_restoration", 0) },
+  [3097] = { eff("Vision nocturne", "", 0, 120, "T_night_eye_illusion", 0), eff("Détection de vie", "", 100, 120, "T_detect_life_mysticism", 0) },
 }
 local added = obj("VAddedEffectsListViewModel", "AddedVM")
 local SPELL_NAMES = { [3007] = "Nerver Give Up", [3049] = "Puissance de l'archer", [3050] = "Puissance du mage",
   [3060] = "Daedric Armor", [3061] = "Bouclier lié", [3070] = "Champ de Force", [3071] = "Égide",
   [3080] = "Magic Well", [3081] = "Renfort de Volonté supérieur",
   [3090] = "Arc enchanté", [3091] = "Masse enchantée", [3092] = "Épée liée",
-  [3093] = "Caméléon", [3094] = "Pas voilés", [3095] = "Dissipation suprême", [3096] = "Renfort leurre" }
+  [3093] = "Caméléon", [3094] = "Pas voilés", [3095] = "Dissipation suprême", [3096] = "Renfort leurre", [3097] = "Oeil de la nuit" }
 -- As in the game: the panel instance is named after the menu's variable ("magic_details"), and the
 -- title is a WBP_AltarTextBlock user widget wrapping a VAltarTextBlock named text_block.
 local title = obj("VAltarTextBlock", "text_block", nil,
@@ -375,6 +394,7 @@ if BOW then for _, id in ipairs({ 3090, 3091, 3092 }) do hoverSpell(id); step(1,
 if CHAM then for _, id in ipairs({ 3093, 3094 }) do hoverSpell(id); step(1, true) end end
 if os.getenv("SELFDISPEL") == "1" then hoverSpell(3095); step(1, true) end
 if os.getenv("DECOY") == "1" then hoverSpell(3096); step(1, true) end
+if EXPLORE then hoverSpell(3097); step(1, true) end
 HOVERED = nil
 -- DELETED=1: "Puissance du mage" is deleted in game after being learned: the book forgets it.
 if os.getenv("DELETED") == "1" then

@@ -1767,15 +1767,56 @@ local iconNames = {} -- icon texture name -> { [name] = true }
 -- It is only refilled when the player opens the magic menu.
 local activePage = { items = {}, sig = nil, at = -1000 }
 
+-- Spells deleted in game (e.g. to rename them) stay in the book and clash with their new copy
+-- (same effects, duration and cost: "Daedric Armor" vs "Cuirasse des Abysses", no name shown).
+-- The menu's list holds every spell: book spells missing from it are forgotten. Only when the
+-- same list was read twice in a row and most of the book is in it (never on a partial list).
+local lastSpellList = nil
+local forgetSkipLogged = false
+
+local function ForgetDeletedSpells(names, count)
+    if count == 0 then return end
+    local keys = {}
+    for n in pairs(names) do keys[#keys + 1] = n end
+    table.sort(keys)
+    local sig = table.concat(keys, "\n")
+    local stable = sig == lastSpellList
+    lastSpellList = sig
+    if not stable then return end
+    local missing = {}
+    for name in pairs(spellbook.spells) do
+        if not names[name] then missing[#missing + 1] = name end
+    end
+    if #missing == 0 or #missing > math.max(3, spellbook.count * 0.2) then
+        if #missing > 0 and not forgetSkipLogged then
+            forgetSkipLogged = true
+            Debug("spell book: %d of %d spells not in the menu's list (%d spells), not forgetting them", #missing, spellbook.count, count)
+        end
+        return
+    end
+    table.sort(missing)
+    for _, name in ipairs(missing) do
+        spellbook.spells[name] = nil
+        spellbook.count = spellbook.count - 1
+    end
+    pcall(SaveSpellbook)
+    Debug("spell book: forgot %d spell(s) no longer in the game: %s", #missing, table.concat(missing, ", "))
+end
+
 local function RefreshIconNames()
     local all = FindAllOf("VMagicMenuViewModel")
     if not all then return end
     for _, mm in ipairs(all) do
         if Valid(mm) and not IsTemplate(mm) then
             local items, parts = {}, {}
+            local spellNames, spellCount = {}, 0
             for _, it in ipairs(ReadArray(mm.Inventory)) do
                 pcall(function() RememberTexture(it.Icon) end)
                 local okT, typ = pcall(function() return it.Type end)
+                if okT and SPELL_TYPES[typ] then
+                    local n = TextToString(it.Name)
+                    if n ~= "" and not spellNames[n] then spellNames[n] = true; spellCount = spellCount + 1 end
+                end
                 if okT and typ == 8 then -- ELegacyMagicMenuItemType::Active
                     local icon = NameOf(it.Icon)
                     local name = TextToString(it.Name)
@@ -1789,6 +1830,7 @@ local function RefreshIconNames()
                     end
                 end
             end
+            pcall(ForgetDeletedSpells, spellNames, spellCount)
             -- The list is emptied when the menu closes: keep the last page seen.
             local sig = table.concat(parts, ";")
             if #items > 0 and sig ~= activePage.sig then

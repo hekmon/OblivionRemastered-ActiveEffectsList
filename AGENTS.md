@@ -66,6 +66,7 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        PAGESTUCK=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # page read with rebuilt effects
        REORDER=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # game reorders its list
        DECOY=1 RECAST=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # hidden casts with near-equal costs
+       DELETED=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # a learned spell deleted in game
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
    a wrong edit can delete functions and the mod then fails silently in game. Compare the list of
@@ -237,6 +238,11 @@ Do not install or reinstall something risky while the user is playing without te
   "Épée liée" (15 s), the only spell with just a bound weapon.
 - **Leftovers:** effects not claimed by a cast within 8 s (e.g. already active when the mod
   started) are matched to the spell book by icon and estimated duration when only one spell fits.
+- **Spells deleted in game are forgotten.** The base game cannot delete spells; the user does it
+  with [Delete Spells - OBSE - ASI - Updated](https://www.nexusmods.com/oblivionremastered/mods/4934) (OBSE), and deleted and recreated spells to rename them: the old "Daedric Armor" and the new "Cuirasse des Abysses" had the same effects,
+  duration and cost, so no name was shown. Book spells missing from the menu's spell list
+  (`Inventory`, types 1/2/4) are removed, only when the same list was read twice in a row and at
+  most max(3, 20 %) of the book is missing (never on a partial list; otherwise logged).
 - **Learning is strict:** the hovered name must be found in the magic menu's spell lists, with a
   list icon that is one of the effects' icons. The detail panel can show another tab's item; a
   "Caméléon" entry once got another item's effects before this rule.

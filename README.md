@@ -25,6 +25,10 @@ works with the vanilla HUD), without modifying it.
 - **Open the magic menu once after a potion, scroll, shrine or pool.** Effects that share an icon
   (all the fortify effects do) then each get their own name ("Renfort : Force 20" instead of
   "Renfort"). See [effects that are not your spells](#effects-that-are-not-your-spells).
+- **Deleted a spell with a mod** such as
+  [Delete Spells - OBSE - ASI - Updated](https://www.nexusmods.com/oblivionremastered/mods/4934) (the base game cannot
+  delete spells), e.g. to recreate it under another name? Hover the new one once. The old one is forgotten the next time you open the magic
+  menu.
 - **When updating, only replace the `Scripts` folder**: `spellbook.txt` and `permanent.txt` hold
   what the mod learned.
 

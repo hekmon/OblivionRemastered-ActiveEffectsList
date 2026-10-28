@@ -376,6 +376,10 @@ if CHAM then for _, id in ipairs({ 3093, 3094 }) do hoverSpell(id); step(1, true
 if os.getenv("SELFDISPEL") == "1" then hoverSpell(3095); step(1, true) end
 if os.getenv("DECOY") == "1" then hoverSpell(3096); step(1, true) end
 HOVERED = nil
+-- DELETED=1: "Puissance du mage" is deleted in game after being learned: the book forgets it.
+if os.getenv("DELETED") == "1" then
+  for i, it in ipairs(INV) do if it.Name.ToString() == "Puissance du mage" then table.remove(INV, i); break end end
+end
 step(9)          -- includes the fortify cast at gameTime 108
 step(10, true)   -- paused (menu open)
 step(5)

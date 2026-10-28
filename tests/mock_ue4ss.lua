@@ -228,6 +228,8 @@ local INV = {
     -- DECOY=1 (with STUCK=1): a fortify spell costing 41, within 2 % of the Volonté spell's 40
     { Name = text("Renfort leurre"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 26, Property = 41 },
     { Name = text("Oeil de la nuit"), Icon = T("T_detect_life_mysticism"), Type = 4, InventoryIndex = 27, Property = 108 },
+    -- RENAMED=1: "Puissance de l'archer" recreated as "Archer renommé" (same effects and cost)
+    { Name = text("Archer renommé"), Icon = T("T_fortify_restoration"), Type = 4, InventoryIndex = 28, Property = 50 },
 }
 if POOL then
   -- permanent effects (enchanted gear, abilities) on the active effects page
@@ -271,7 +273,7 @@ local SPELL_NAMES = { [3007] = "Nerver Give Up", [3049] = "Puissance de l'archer
   [3060] = "Daedric Armor", [3061] = "Bouclier lié", [3070] = "Champ de Force", [3071] = "Égide",
   [3080] = "Magic Well", [3081] = "Renfort de Volonté supérieur",
   [3090] = "Arc enchanté", [3091] = "Masse enchantée", [3092] = "Épée liée",
-  [3093] = "Caméléon", [3094] = "Pas voilés", [3095] = "Dissipation suprême", [3096] = "Renfort leurre", [3097] = "Oeil de la nuit" }
+  [3093] = "Caméléon", [3094] = "Pas voilés", [3095] = "Dissipation suprême", [3096] = "Renfort leurre", [3097] = "Oeil de la nuit", [3098] = "Archer renommé" }
 -- As in the game: the panel instance is named after the menu's variable ("magic_details"), and the
 -- title is a WBP_AltarTextBlock user widget wrapping a VAltarTextBlock named text_block.
 local title = obj("VAltarTextBlock", "text_block", nil,
@@ -395,8 +397,10 @@ if CHAM then for _, id in ipairs({ 3093, 3094 }) do hoverSpell(id); step(1, true
 if os.getenv("SELFDISPEL") == "1" then hoverSpell(3095); step(1, true) end
 if os.getenv("DECOY") == "1" then hoverSpell(3096); step(1, true) end
 if EXPLORE then hoverSpell(3097); step(1, true) end
+if os.getenv("RENAMED") == "1" then SPELL_EFFECTS[3098] = SPELL_EFFECTS[3049]; hoverSpell(3098); step(1, true) end
 HOVERED = nil
--- DELETED=1: "Puissance du mage" is deleted in game after being learned: the book forgets it.
+-- DELETED=1: "Puissance du mage" disappears from the menu's list: the book must keep it (the
+-- list does not give custom spells' real names; forgetting erased 18 existing spells).
 if os.getenv("DELETED") == "1" then
   for i, it in ipairs(INV) do if it.Name.ToString() == "Puissance du mage" then table.remove(INV, i); break end end
 end

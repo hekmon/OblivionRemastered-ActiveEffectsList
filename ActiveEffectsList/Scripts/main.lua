@@ -837,9 +837,10 @@ local function LoadSpellbook()
     local f = io.open(SPELLBOOK_FILE, "r")
     if not f then return end
     for line in f:lines() do
-        local name, icon, rest, cost = line:match("^(.-)\t(.-)\t([^\t]*)\t?(.*)$")
+        local name, icon, rest, tail = line:match("^(.-)\t(.-)\t([^\t]*)\t?(.*)$")
         if name and name ~= "" then
-            local spell = { icon = icon, effects = {}, cost = tonumber(cost) }
+            local cost, learned = tail:match("^([^\t]*)\t?(.*)$")
+            local spell = { icon = icon, effects = {}, cost = tonumber(cost), learned = tonumber(learned) }
             for eff in (rest .. "||"):gmatch("(.-)||") do
                 local eicon, label, dur, range = eff:match("^(.-)|(.-)|(.-)|(.-)$")
                 if eicon then
@@ -851,6 +852,7 @@ local function LoadSpellbook()
             end
             spellbook.spells[name] = spell
             spellbook.count = spellbook.count + 1
+            if spell.learned and spell.learned > (spellbook.lastLearned or 0) then spellbook.lastLearned = spell.learned end
         end
     end
     f:close()
@@ -872,7 +874,8 @@ local function SaveSpellbook()
         for _, e in ipairs(s.effects) do
             parts[#parts + 1] = string.format("%s|%s|%d|%d", e.icon, e.label, e.duration, e.range)
         end
-        f:write(n, "\t", s.icon, "\t", table.concat(parts, "||"), "\t", s.cost and string.format("%d", s.cost) or "", "\n")
+        f:write(n, "\t", s.icon, "\t", table.concat(parts, "||"), "\t", s.cost and string.format("%d", s.cost) or "",
+            s.learned and ("\t" .. string.format("%d", s.learned)) or "", "\n")
     end
     f:close()
     spellbook.dirty = false
@@ -1089,7 +1092,13 @@ local function CaptureSpell()
     end
     if changed then
         if not old then spellbook.count = spellbook.count + 1 end
-        spellbook.spells[name] = { icon = icon, effects = effects, cost = spell.cost }
+        -- When it was first learned: a spell recreated under a new name wins over its old copy.
+        local learned = old and old.learned
+        if not learned then
+            learned = math.max(os.time(), (spellbook.lastLearned or 0) + 1) -- strictly increasing
+            spellbook.lastLearned = learned
+        end
+        spellbook.spells[name] = { icon = icon, effects = effects, cost = spell.cost, learned = learned }
         pcall(SaveSpellbook)
         Debug("spell book: learned '%s' (%s, cost %s, from %s): %s", name, icon, tostring(spell.cost), source, table.concat(parts, " ; "))
     end
@@ -1181,6 +1190,34 @@ local function CostMatches(spell, amount, strict)
     if not spell.cost or spell.cost <= 0 or not amount then return nil end
     local tolerance = strict and math.max(2, spell.cost * 0.02) or math.max(3, spell.cost * 0.1)
     return math.abs(spell.cost - amount) <= tolerance
+end
+
+-- Spells with the same self timed effects (icons and durations): a spell deleted in game with a
+-- mod and recreated under another name leaves its old copy in the book ("Daedric Armor" and
+-- "Cuirasse des Abysses": same effects, duration and cost, so no name was shown). Among such
+-- identical spells, the one learned last wins. The book never forgets a spell on its own: the
+-- game's spell list does not give custom spells' real names (a version that removed spells
+-- missing from it erased 18 existing custom spells).
+local function Signature(name)
+    local parts = {}
+    for _, it in ipairs(SelfTimed(spellbook.spells[name])) do
+        parts[#parts + 1] = it.se.icon .. "|" .. it.se.duration
+    end
+    table.sort(parts)
+    return table.concat(parts, ";")
+end
+
+local function NewestIfIdentical(list)
+    if #list < 2 then return list end
+    local sig = Signature(list[1])
+    for i = 2, #list do if Signature(list[i]) ~= sig then return list end end
+    local best, bestT, tie = nil, -1, false
+    for _, n in ipairs(list) do
+        local t = spellbook.spells[n].learned or 0
+        if t > bestT then best, bestT, tie = n, t, false elseif t == bestT then tie = true end
+    end
+    if tie then return list end
+    return { best }
 end
 
 -- Casting a spell again replaces its previous cast (same-spell effects do not stack in
@@ -1492,6 +1529,7 @@ local function AttributeCasts(tracked, vm)
                 end
                 if #recast == 1 then cands = recast end
             end
+            cands = NewestIfIdentical(cands)
             if #cands == 1 then
                 NewRecord(cands[1], d.clock, true)
                 Debug("cast: hidden cast of '%s' (HUD %d/%d, %.0f magicka spent)", cands[1], d.hudCount, config.HudLimit, d.amount)
@@ -1608,7 +1646,7 @@ local function AttributeCasts(tracked, vm)
                 end)
             end
         end
-        return list
+        return NewestIfIdentical(list)
     end
     local exact, containing = SpellsMatching(icons)
     local isExact = {}
@@ -1774,56 +1812,15 @@ local iconNames = {} -- icon texture name -> { [name] = true }
 -- It is only refilled when the player opens the magic menu.
 local activePage = { items = {}, sig = nil, at = -1000 }
 
--- Spells deleted in game (e.g. to rename them) stay in the book and clash with their new copy
--- (same effects, duration and cost: "Daedric Armor" vs "Cuirasse des Abysses", no name shown).
--- The menu's list holds every spell: book spells missing from it are forgotten. Only when the
--- same list was read twice in a row and most of the book is in it (never on a partial list).
-local lastSpellList = nil
-local forgetSkipLogged = false
-
-local function ForgetDeletedSpells(names, count)
-    if count == 0 then return end
-    local keys = {}
-    for n in pairs(names) do keys[#keys + 1] = n end
-    table.sort(keys)
-    local sig = table.concat(keys, "\n")
-    local stable = sig == lastSpellList
-    lastSpellList = sig
-    if not stable then return end
-    local missing = {}
-    for name in pairs(spellbook.spells) do
-        if not names[name] then missing[#missing + 1] = name end
-    end
-    if #missing == 0 or #missing > math.max(3, spellbook.count * 0.2) then
-        if #missing > 0 and not forgetSkipLogged then
-            forgetSkipLogged = true
-            Debug("spell book: %d of %d spells not in the menu's list (%d spells), not forgetting them", #missing, spellbook.count, count)
-        end
-        return
-    end
-    table.sort(missing)
-    for _, name in ipairs(missing) do
-        spellbook.spells[name] = nil
-        spellbook.count = spellbook.count - 1
-    end
-    pcall(SaveSpellbook)
-    Debug("spell book: forgot %d spell(s) no longer in the game: %s", #missing, table.concat(missing, ", "))
-end
-
 local function RefreshIconNames()
     local all = FindAllOf("VMagicMenuViewModel")
     if not all then return end
     for _, mm in ipairs(all) do
         if Valid(mm) and not IsTemplate(mm) then
             local items, parts = {}, {}
-            local spellNames, spellCount = {}, 0
             for _, it in ipairs(ReadArray(mm.Inventory)) do
                 pcall(function() RememberTexture(it.Icon) end)
                 local okT, typ = pcall(function() return it.Type end)
-                if okT and SPELL_TYPES[typ] then
-                    local n = TextToString(it.Name)
-                    if n ~= "" and not spellNames[n] then spellNames[n] = true; spellCount = spellCount + 1 end
-                end
                 if okT and typ == 8 then -- ELegacyMagicMenuItemType::Active
                     local icon = NameOf(it.Icon)
                     local name = TextToString(it.Name)
@@ -1837,7 +1834,6 @@ local function RefreshIconNames()
                     end
                 end
             end
-            pcall(ForgetDeletedSpells, spellNames, spellCount)
             -- The list is emptied when the menu closes: keep the last page seen.
             local sig = table.concat(parts, ";")
             if #items > 0 and sig ~= activePage.sig then

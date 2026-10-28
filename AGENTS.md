@@ -66,7 +66,8 @@ The user plays the game in French, so names in logs are French ("Renfort : Volon
        PAGESTUCK=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # page read with rebuilt effects
        REORDER=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # game reorders its list
        DECOY=1 RECAST=1 STUCK=1 HUD_CAP=3 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # hidden casts with near-equal costs
-       DELETED=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # a learned spell deleted in game
+       DELETED=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # spell missing from the menu list: kept
+       RENAMED=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # identical spells: the newest wins
        EXPLORE=1 FULL=1 lua tests/mock_ue4ss.lua ~/.cache/obr/test/mod/ActiveEffectsList/Scripts nonames ok  # cast while a hidden effect surfaces
 
    Check every scenario for "update error" in the verbose output (set QUIET = false in a copy):
@@ -245,11 +246,17 @@ Do not install or reinstall something risky while the user is playing without te
   surfaced at 53 % just as "Oeil de la nuit" (night eye + detect life, 108) was cast, took its
   magicka ("Cuirasse des Abysses cast again"), and the night eye, shown 2 s later, was only
   matched by duration, without its hidden detect life.
-- **Spells deleted in game are forgotten.** The base game cannot delete spells; the user does it
-  with [Delete Spells - OBSE - ASI - Updated](https://www.nexusmods.com/oblivionremastered/mods/4934) (OBSE), and deleted and recreated spells to rename them: the old "Daedric Armor" and the new "Cuirasse des Abysses" had the same effects,
-  duration and cost, so no name was shown. Book spells missing from the menu's spell list
-  (`Inventory`, types 1/2/4) are removed, only when the same list was read twice in a row and at
-  most max(3, 20 %) of the book is missing (never on a partial list; otherwise logged).
+- **Never remove spells from the book automatically.** The menu's spell list (`Inventory`)
+  does not give custom spells' real names, so a version that forgot book spells missing from it
+  **erased 18 existing custom spells** (Cuirasse des Abysses, Daywalker, Oeil de la nuit...);
+  the user's book had to be restored from a backup. Back up `spellbook.txt` before installing
+  anything that writes it.
+- **Spells deleted in game and recreated** (the base game cannot delete spells; the user does it
+  with [Delete Spells - OBSE - ASI - Updated](https://www.nexusmods.com/oblivionremastered/mods/4934))
+  leave their old copy in the book: "Daedric Armor" and "Cuirasse des Abysses" had the same
+  effects, duration and cost, so no name was shown. The book stores when each spell was first
+  learned (5th field, epoch seconds, strictly increasing); among spells with identical self
+  timed effects (icons and durations), the one learned last wins, for visible and hidden casts.
 - **Learning is strict:** the hovered name must be found in the magic menu's spell lists, with a
   list icon that is one of the effects' icons. The detail panel can show another tab's item; a
   "Caméléon" entry once got another item's effects before this rule.

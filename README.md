@@ -27,8 +27,8 @@ works with the vanilla HUD), without modifying it.
   "Renfort"). See [effects that are not your spells](#effects-that-are-not-your-spells).
 - **Deleted a spell with a mod** such as
   [Delete Spells - OBSE - ASI - Updated](https://www.nexusmods.com/oblivionremastered/mods/4934) (the base game cannot
-  delete spells), e.g. to recreate it under another name? Hover the new one once. The old one is forgotten the next time you open the magic
-  menu.
+  delete spells), e.g. to recreate it under another name? Hover the new one once: when two
+  spells have the same effects, the one learned last is used.
 - **When updating, only replace the `Scripts` folder**: `spellbook.txt` and `permanent.txt` hold
   what the mod learned.
 
